@@ -11,13 +11,10 @@
   <header class="topbar" id="topbar" hidden>
     <div class="brand">
       <span class="brand-mark">VS</span>
-      <div>
-        <h1>Viral Video Studio</h1>
-        <p>Görsel + fikir → NanoBanana → VEO3 → 9 sosyal platform</p>
-      </div>
+      <h1>Viral Video Studio</h1>
     </div>
     <div class="topbar-right">
-      <div id="providers" class="providers"></div>
+      <button id="mode-pill" class="mode-pill" type="button" hidden>Deneme modu</button>
       <button id="open-settings" class="ghost" type="button">Ayarlar</button>
       <div class="account">
         <span id="account-name"></span>
@@ -177,6 +174,12 @@
   <dialog id="settings">
     <form method="dialog" class="settings-form">
       <h2>Ayarlar</h2>
+
+      <div class="field">
+        <span>Servis durumu</span>
+        <div id="provider-status" class="provider-status"></div>
+      </div>
+
       <p class="muted">Her platform için Blotato hesap kimliğini gir; bu hesaplar yalnızca senin kullanıcına bağlıdır.</p>
       <div class="field-row">
         <label class="field">

@@ -20,15 +20,38 @@ const api = async (url, options) => {
 const time = (iso) => new Date(iso).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 // ---------- providers -------------------------------------------------------
-const renderProviders = (providers) => {
-  const entries = [
-    ['OpenAI', providers.openai],
-    ['NanoBanana', providers.fal],
-    ['VEO3', providers.kie],
-    ['Blotato', providers.blotato],
-  ];
-  $('providers').innerHTML = entries
-    .map(([label, live]) => `<span class="chip ${live && !providers.mockMode ? 'live' : 'mock'}">${label}: ${live && !providers.mockMode ? 'canlı' : 'mock'}</span>`)
+const PROVIDERS = [
+  { key: 'openai', label: 'Metin ve görsel analizi' },
+  { key: 'fal', label: 'Görsel üretimi' },
+  { key: 'kie', label: 'Video üretimi' },
+  { key: 'blotato', label: 'Sosyal medya paylaşımı' },
+];
+
+const isLive = (providers, key) => providers[key] && !providers.mockMode;
+
+/**
+ * Tek bir gösterge: bir servis bile örnek verilerle çalışıyorsa görünür,
+ * hepsi canlıya geçtiğinde kendiliğinden kaybolur.
+ */
+const renderMode = (providers) => {
+  const pill = $('mode-pill');
+  const mocked = PROVIDERS.filter((provider) => !isLive(providers, provider.key));
+  pill.hidden = mocked.length === 0;
+  pill.title = mocked.length
+    ? 'Bazı servisler örnek verilerle çalışıyor: gerçek video üretilmez, paylaşım yapılmaz. Ayrıntı için tıkla.'
+    : '';
+};
+
+/** Ayrıntılı durum yalnızca Ayarlar penceresinde. */
+const renderProviderStatus = (providers) => {
+  $('provider-status').innerHTML = PROVIDERS
+    .map((provider) => {
+      const live = isLive(providers, provider.key);
+      return `<div class="provider-row">
+        <span style="color:var(--text)">${provider.label}</span>
+        <span class="${live ? 'live' : ''}">${live ? 'canlı' : 'deneme (anahtar yok)'}</span>
+      </div>`;
+    })
     .join('');
 };
 
@@ -363,9 +386,10 @@ const enterApp = async () => {
   state.selected = new Set(status.settings.platforms.filter((platform) => platform.enabled).map((platform) => platform.id));
 
   $('account-name').textContent = status.user.name || status.user.email;
-  renderProviders(status.providers);
+  renderMode(status.providers);
   renderPlatformPicker();
   renderSettingsForm();
+  renderProviderStatus(status.providers);
   $('model').value = status.settings.model;
   $('aspect').value = status.settings.aspectRatio;
 
@@ -382,10 +406,13 @@ const init = async () => {
   wireDropzone();
 
   $('start').addEventListener('click', start);
-  $('open-settings').addEventListener('click', () => {
+  const openSettings = () => {
     renderSettingsForm();
+    if (state.providers) renderProviderStatus(state.providers);
     $('settings').showModal();
-  });
+  };
+  $('open-settings').addEventListener('click', openSettings);
+  $('mode-pill').addEventListener('click', openSettings);
   $('settings').addEventListener('close', () => {
     if ($('settings').returnValue === 'save') saveSettings().catch((error) => alert(error.message));
   });
