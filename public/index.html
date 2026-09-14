@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Viral Video Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f0b429'/%3E%3Cpath d='M11 9l7 7-7 7z' fill='%2323180a'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar" id="topbar" hidden>
+    <div class="brand">
+      <span class="brand-mark">VS</span>
+      <div>
+        <h1>Viral Video Studio</h1>
+        <p>Görsel + fikir → NanoBanana → VEO3 → 9 sosyal platform</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div id="providers" class="providers"></div>
+      <button id="open-settings" class="ghost" type="button">Ayarlar</button>
+      <div class="account">
+        <span id="account-name"></span>
+        <button id="logout" class="ghost" type="button">Çıkış</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Üyelik ekranı -->
+  <section id="auth" class="auth" hidden>
+    <div class="auth-card">
+      <div class="brand">
+        <span class="brand-mark">VS</span>
+        <div>
+          <h1>Viral Video Studio</h1>
+          <p>Hesabınla giriş yap, kendi videolarını üret.</p>
+        </div>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-mode="login" type="button" role="tab">Giriş yap</button>
+        <button class="tab" data-mode="register" type="button" role="tab">Kayıt ol</button>
+      </div>
+
+      <form id="auth-form" class="auth-form">
+        <label class="field" id="name-field" hidden>
+          <span>Ad</span>
+          <input id="auth-name" type="text" autocomplete="name" placeholder="Adın" />
+        </label>
+        <label class="field">
+          <span>E-posta</span>
+          <input id="auth-email" type="email" autocomplete="email" required placeholder="ornek@mail.com" />
+        </label>
+        <label class="field">
+          <span>Şifre</span>
+          <input id="auth-password" type="password" autocomplete="current-password" required minlength="8" placeholder="En az 8 karakter" />
+        </label>
+        <button id="auth-submit" class="primary" type="submit">Giriş yap</button>
+        <p id="auth-error" class="error" hidden></p>
+      </form>
+    </div>
+  </section>
+
+  <main class="layout" id="app" hidden>
+    <section class="panel compose">
+      <h2>Yeni video</h2>
+
+      <label class="dropzone" id="dropzone">
+        <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+        <img id="preview" alt="" hidden />
+        <div id="dropzone-empty" class="dropzone-empty">
+          <strong>Referans görseli bırak</strong>
+          <span>veya seçmek için tıkla · PNG, JPG, WEBP · max 20 MB</span>
+        </div>
+      </label>
+
+      <label class="field">
+        <span>Video fikri</span>
+        <textarea id="idea" rows="4" placeholder="Örn: Ürünü mutfak tezgahında tek çekimde tanıtan samimi bir UGC klibi"></textarea>
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span>VEO3 modeli</span>
+          <select id="model">
+            <option value="veo3_fast">veo3_fast</option>
+            <option value="veo3">veo3</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>En-boy oranı</span>
+          <select id="aspect">
+            <option value="16:9">16:9</option>
+            <option value="9:16">9:16</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="field">
+        <span>Paylaşılacak platformlar</span>
+        <div id="platform-picker" class="platform-picker"></div>
+      </div>
+
+      <button id="start" class="primary" type="button" disabled>Otomasyonu başlat</button>
+      <p id="compose-error" class="error" hidden></p>
+    </section>
+
+    <section class="panel run">
+      <div class="run-head">
+        <h2 id="run-title">Akış</h2>
+        <span id="run-status" class="badge">boşta</span>
+      </div>
+
+      <ol id="steps" class="steps"></ol>
+
+      <div id="outputs" class="outputs" hidden>
+        <div class="output-grid">
+          <figure class="output-card">
+            <figcaption>Düzenlenmiş görsel</figcaption>
+            <img id="out-image" alt="NanoBanana çıktısı" hidden />
+            <p id="out-image-empty" class="muted">Henüz üretilmedi</p>
+          </figure>
+          <figure class="output-card">
+            <figcaption>Video</figcaption>
+            <video id="out-video" controls playsinline hidden></video>
+            <p id="out-video-empty" class="muted">Henüz render edilmedi</p>
+          </figure>
+        </div>
+
+        <div class="output-text">
+          <details open>
+            <summary>Başlık &amp; caption</summary>
+            <p id="out-title" class="mono"></p>
+            <p id="out-caption"></p>
+          </details>
+          <details>
+            <summary>Görsel analizi</summary>
+            <pre id="out-description" class="mono"></pre>
+          </details>
+          <details>
+            <summary>Görsel prompt'u</summary>
+            <pre id="out-image-prompt" class="mono"></pre>
+          </details>
+          <details>
+            <summary>VEO3 prompt'u</summary>
+            <pre id="out-final-prompt" class="mono"></pre>
+          </details>
+        </div>
+
+        <div id="posts" class="posts"></div>
+      </div>
+
+      <details class="logs" open>
+        <summary>Canlı log</summary>
+        <div id="log" class="log"></div>
+      </details>
+    </section>
+
+    <section class="panel library">
+      <div class="run-head">
+        <h2>Projelerim</h2>
+        <span class="muted" id="library-count"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="projects">
+          <thead>
+            <tr>
+              <th>Görsel</th><th>Başlık</th><th>Caption</th><th>Durum</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="settings">
+    <form method="dialog" class="settings-form">
+      <h2>Ayarlar</h2>
+      <p class="muted">Her platform için Blotato hesap kimliğini gir; bu hesaplar yalnızca senin kullanıcına bağlıdır.</p>
+      <div class="field-row">
+        <label class="field">
+          <span>Varsayılan model</span>
+          <input id="set-model" type="text" />
+        </label>
+        <label class="field">
+          <span>Varsayılan oran</span>
+          <input id="set-aspect" type="text" />
+        </label>
+      </div>
+      <div id="settings-platforms" class="settings-platforms"></div>
+      <div class="settings-actions">
+        <button value="cancel" class="ghost" type="submit">Kapat</button>
+        <button id="save-settings" value="save" class="primary" type="submit">Kaydet</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

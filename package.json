@@ -1,0 +1,18 @@
+{
+  "name": "viral-video-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web app port of the 'Generate AI viral videos with NanoBanana & VEO3, shared on socials via Blotato' n8n workflow",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "dev": "node --env-file-if-exists=.env --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
