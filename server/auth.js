@@ -120,18 +120,15 @@ export const clearSessionCookie = (res) => {
 };
 
 /** Attaches req.user when the request carries a valid session cookie. */
-export const attachUser = async (req, res, next) => {
-  try {
-    const cookies = parseCookies(req.headers.cookie);
-    req.sessionToken = cookies[authConfig.cookieName] || null;
-    req.user = await userFromToken(req.sessionToken);
-    next();
-  } catch (error) {
-    next(error);
-  }
+export const attachUser = async (req) => {
+  const cookies = parseCookies(req.headers.cookie);
+  req.sessionToken = cookies[authConfig.cookieName] || null;
+  req.user = await userFromToken(req.sessionToken);
 };
 
-export const requireAuth = (req, res, next) => {
-  if (!req.user) return res.status(401).json({ error: 'Giriş yapmanız gerekiyor' });
-  next();
+/** Returns false (and answers with 401) when the request has no session. */
+export const requireAuth = (req, res) => {
+  if (req.user) return true;
+  res.json(401, { error: 'Giriş yapmanız gerekiyor' });
+  return false;
 };

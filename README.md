@@ -32,15 +32,21 @@ rule are carried over from the workflow unchanged.
 
 ## Running it
 
+Türkçe adım adım kılavuz: **[BASLANGIC.md](BASLANGIC.md)**.
+
+The app has **no dependencies** — Node.js 18+ is all it needs, and there is no install step:
+
 ```bash
-npm install
-cp .env.example .env    # fill in whichever keys you have
-npm start               # http://localhost:3000
+npm start            # or: node server/index.js
 ```
+
+Or double-click `baslat.bat` (Windows), `baslat.command` (macOS), `baslat.sh` (Linux); the browser
+opens by itself. If the port is taken the app moves to the next free one and prints the address.
 
 Register an account on first visit. Every provider without an API key runs against a built-in fake,
 so the whole flow is demoable before spending a credit — the header chips show which providers are
-live and which are mocked.
+live and which are mocked. Add keys later by copying `.env.example` to `.env`; each provider goes
+live on its own as soon as its key is present.
 
 ### Going live
 
@@ -74,6 +80,8 @@ logged-in member.
 ```
 server/
   index.js        HTTP API, uploads, SSE
+  http-server.js  tiny router over node:http (so the app needs no framework)
+  env.js          .env reader
   auth.js         registration, login, scrypt hashing, session cookies
   pipeline.js     the five stages
   jobs.js         job registry + event bus

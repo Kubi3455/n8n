@@ -1,27 +1,22 @@
+import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import express from 'express';
-import {
-  attachUser,
-  clearSessionCookie,
-  createSession,
-  destroySession,
-  login,
-  register,
-  requireAuth,
-  setSessionCookie,
-} from './auth.js';
-import { config, paths, providerStatus } from './config.js';
+import { attachUser, clearSessionCookie, createSession, destroySession, login, register, requireAuth, setSessionCookie } from './auth.js';
+import { config, paths, providerStatus, setPublicUrl } from './config.js';
+import { createServer, listenOnFreePort } from './http-server.js';
 import { bus, createJob, getJob, listJobs, restoreJobs } from './jobs.js';
 import { runPipeline } from './pipeline.js';
 import { deleteProject, getSettings, listProjects, saveSettings } from './store.js';
 
-const app = express();
-app.use(express.json({ limit: '30mb' }));
+const app = createServer({
+  staticDirs: [
+    { prefix: '/uploads', dir: paths.uploads },
+    { prefix: '/', dir: paths.public },
+  ],
+});
+
 app.use(attachUser);
-app.use(express.static(paths.public));
-app.use('/uploads', express.static(paths.uploads));
 
 const EXTENSION_BY_MIME = {
   'image/png': '.png',
@@ -51,14 +46,14 @@ const saveUpload = async (dataUrl, userId) => {
   return { imageKey, filePath: path.join(paths.uploads, fileName), publicUrl: `${config.publicUrl}/uploads/${fileName}` };
 };
 
-const fail = (res, error) => res.status(error.status || 400).json({ error: error.message });
+const fail = (res, error) => res.json(error.status || 400, { error: error.message });
 
 // ---------- membership ------------------------------------------------------
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const user = await register(req.body || {});
+    const user = await register(req.body);
     setSessionCookie(res, await createSession(user.id));
-    res.status(201).json({ user });
+    res.json(201, { user });
   } catch (error) {
     fail(res, error);
   }
@@ -66,9 +61,9 @@ app.post('/api/auth/register', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const user = await login(req.body || {});
+    const user = await login(req.body);
     setSessionCookie(res, await createSession(user.id));
-    res.json({ user });
+    res.json(200, { user });
   } catch (error) {
     fail(res, error);
   }
@@ -77,52 +72,65 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/logout', async (req, res) => {
   if (req.sessionToken) await destroySession(req.sessionToken);
   clearSessionCookie(res);
-  res.json({ ok: true });
+  res.json(200, { ok: true });
 });
 
-app.get('/api/auth/me', (req, res) => res.json({ user: req.user }));
+app.get('/api/auth/me', (req, res) => res.json(200, { user: req.user }));
 
 // ---------- app -------------------------------------------------------------
 app.get('/api/status', async (req, res) => {
   const settings = req.user ? await getSettings(req.user.id) : null;
-  res.json({ user: req.user, providers: providerStatus(), settings, publicUrl: config.publicUrl });
+  res.json(200, { user: req.user, providers: providerStatus(), settings, publicUrl: config.publicUrl });
 });
 
-app.get('/api/settings', requireAuth, async (req, res) => res.json(await getSettings(req.user.id)));
+app.get('/api/settings', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  res.json(200, await getSettings(req.user.id));
+});
 
-app.put('/api/settings', requireAuth, async (req, res) => {
+app.put('/api/settings', async (req, res) => {
+  if (!requireAuth(req, res)) return;
   try {
-    res.json(await saveSettings(req.user.id, req.body || {}));
+    res.json(200, await saveSettings(req.user.id, req.body));
   } catch (error) {
     fail(res, error);
   }
 });
 
-app.get('/api/projects', requireAuth, async (req, res) => res.json(await listProjects(req.user.id)));
+app.get('/api/projects', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  res.json(200, await listProjects(req.user.id));
+});
 
-app.delete('/api/projects/:imageKey', requireAuth, async (req, res) => {
+app.delete('/api/projects/:imageKey', async (req, res) => {
+  if (!requireAuth(req, res)) return;
   const removed = await deleteProject(req.user.id, req.params.imageKey);
-  res.status(removed ? 200 : 404).json({ removed });
+  res.json(removed ? 200 : 404, { removed });
 });
 
-app.get('/api/jobs', requireAuth, (req, res) => res.json(listJobs(req.user.id)));
+app.get('/api/jobs', (req, res) => {
+  if (!requireAuth(req, res)) return;
+  res.json(200, listJobs(req.user.id));
+});
 
-app.get('/api/jobs/:id', requireAuth, (req, res) => {
+app.get('/api/jobs/:id', (req, res) => {
+  if (!requireAuth(req, res)) return;
   const job = getJob(req.params.id, req.user.id);
-  if (!job) return res.status(404).json({ error: 'Akış bulunamadı' });
-  res.json(job);
+  if (!job) return res.json(404, { error: 'Akış bulunamadı' });
+  res.json(200, job);
 });
 
-app.post('/api/jobs', requireAuth, async (req, res) => {
+app.post('/api/jobs', async (req, res) => {
+  if (!requireAuth(req, res)) return;
   try {
-    const { image, idea = '', model, aspectRatio, platforms } = req.body || {};
+    const { image, idea = '', model, aspectRatio, platforms } = req.body;
     const settings = await getSettings(req.user.id);
     const upload = await saveUpload(image, req.user.id);
 
     const running = listJobs(req.user.id).find(
       (job) => job.imageKey === upload.imageKey && (job.status === 'running' || job.status === 'queued'),
     );
-    if (running) return res.status(409).json({ error: 'Bu görsel için bir akış zaten çalışıyor' });
+    if (running) return res.json(409, { error: 'Bu görsel için bir akış zaten çalışıyor' });
 
     const job = createJob({
       userId: req.user.id,
@@ -139,14 +147,16 @@ app.post('/api/jobs', requireAuth, async (req, res) => {
 
     // Fire and forget: progress reaches the browser over SSE.
     runPipeline(job, upload).catch((error) => console.error('Pipeline crashed:', error));
-    res.status(202).json(job);
+    res.json(202, job);
   } catch (error) {
     fail(res, error);
   }
 });
 
 /** Server-sent events: one stream carrying this member's job updates. */
-app.get('/api/events', requireAuth, (req, res) => {
+app.get('/api/events', (req, res) => {
+  if (!requireAuth(req, res)) return;
+
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -155,8 +165,9 @@ app.get('/api/events', requireAuth, (req, res) => {
   });
   res.write(`data: ${JSON.stringify({ event: 'hello', jobs: listJobs(req.user.id) })}\n\n`);
 
+  const userId = req.user.id;
   const onUpdate = (payload) => {
-    if (payload.job.userId !== req.user.id) return;
+    if (payload.job.userId !== userId) return;
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
   bus.on('jobs', onUpdate);
@@ -168,12 +179,29 @@ app.get('/api/events', requireAuth, (req, res) => {
   });
 });
 
-app.use((req, res) => res.status(404).json({ error: 'Not found' }));
-
 await restoreJobs();
-app.listen(config.port, () => {
-  const providers = providerStatus();
-  const missing = ['openai', 'fal', 'kie', 'blotato'].filter((key) => !providers[key]);
-  console.log(`Viral Video Studio running on ${config.publicUrl}`);
-  if (missing.length) console.log(`Mock mode for: ${missing.join(', ')} (add the API keys in .env to go live)`);
-});
+
+const port = await listenOnFreePort(app.server, config.port);
+if (!process.env.PUBLIC_URL) setPublicUrl(`http://localhost:${port}`);
+
+/** Opens the default browser when started by a double-click launcher. */
+const openBrowser = (url) => {
+  if (process.env.OPEN_BROWSER === '0' || !process.stdout.isTTY) return;
+  const command = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
+  try {
+    spawn(command, args, { detached: true, stdio: 'ignore' }).unref();
+  } catch {
+    // Opening the browser is a convenience; the URL is printed either way.
+  }
+};
+
+const providers = providerStatus();
+const missing = ['openai', 'fal', 'kie', 'blotato'].filter((key) => !providers[key]);
+console.log('');
+console.log(`  Viral Video Studio hazır:  ${config.publicUrl}`);
+console.log(`  ${missing.length ? `Mock mod: ${missing.join(', ')} (API anahtarı girilmedi)` : 'Tüm servisler canlı'}`);
+console.log('  Durdurmak için: Ctrl+C');
+console.log('');
+
+openBrowser(config.publicUrl);

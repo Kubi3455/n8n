@@ -1,7 +1,11 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadEnv } from './env.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// Read .env before anything below looks at process.env.
+loadEnv(root);
 
 const bool = (value, fallback = false) => {
   if (value === undefined || value === '') return fallback;
@@ -63,6 +67,11 @@ export const config = {
     imageTimeoutMs: Number(process.env.IMAGE_TIMEOUT_MS || 5 * 60 * 1000),
     videoTimeoutMs: Number(process.env.VIDEO_TIMEOUT_MS || 15 * 60 * 1000),
   },
+};
+
+/** The launcher may land on a different port, so the public URL is settled at listen time. */
+export const setPublicUrl = (url) => {
+  config.publicUrl = url.replace(/\/$/, '');
 };
 
 export const providerStatus = () => ({
