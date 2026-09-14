@@ -1,9 +1,10 @@
-// Prompts carried over from the n8n workflow, kept as close to the originals as possible
-// so the web app produces the same kind of output as the automation it replaces.
+// Prompts behind the three content types: normal video, UGC ad video, and the
+// Instagram carousel. The master schema and the UGC-specific wording are carried over
+// from the original n8n workflow; the "normal video" and carousel prompts are new.
 
-// "Set Master Prompt" node: the schema every generated video prompt must follow.
+// The schema every generated video prompt (normal or UGC) must follow.
 export const MASTER_PROMPT_SCHEMA = `{
-  "description": "Brief narrative description of the scene, focusing on key visual storytelling and product transformation.",
+  "description": "Brief narrative description of the scene, focusing on key visual storytelling.",
   "style": "cinematic | photorealistic | stylized | gritty | elegant",
   "camera": {
     "type": "fixed | dolly | Steadicam | crane combo",
@@ -24,8 +25,8 @@ export const MASTER_PROMPT_SCHEMA = `{
     "mood": "describe the ambient atmosphere (moody, clean, epic...)"
   },
   "elements": [
-    "main physical items involved (product box, accessories, vehicles...)",
-    "include brand visibility (logos, packaging, texture...)"
+    "main physical items involved (product, accessories, vehicles...)",
+    "include brand visibility (logos, packaging, texture...) when relevant"
   ],
   "subject": {
     "character": {
@@ -34,13 +35,13 @@ export const MASTER_PROMPT_SCHEMA = `{
       "lip_sync_line": "optional - spoken line if there's a voiceover"
     },
     "product": {
-      "brand": "Brand name",
-      "model": "Product model or name",
-      "action": "description of product transformation or assembly"
+      "brand": "Brand name, if any",
+      "model": "Product model or name, if any",
+      "action": "description of the main transformation or action"
     }
   },
   "motion": {
-    "type": "e.g. transformation, explosion, vortex",
+    "type": "e.g. transformation, explosion, vortex, walk, gesture",
     "details": "step-by-step visual flow of how elements move or evolve"
   },
   "VFX": {
@@ -73,7 +74,7 @@ export const MASTER_PROMPT_SCHEMA = `{
   ]
 }`;
 
-// "OpenAI Vision: Analyze Reference Image" node.
+// "OpenAI Vision: Analyze Reference Image" node - shared by both video modes.
 export const VISION_PROMPT = `You are an image analysis assistant.
 
 Your task is to analyze the given image and output results **only in YAML format**. Do not add explanations, comments, or extra text outside YAML.
@@ -108,8 +109,11 @@ Rules:
 
 Only output valid YAML. No explanations.`;
 
-// "Generate Image Prompt" agent node.
-export const IMAGE_PROMPT_SYSTEM = `ROLE: UGC Image Prompt Builder
+// ============================================================================
+// UGC Reklam Videosu - casual, handheld, authentic. Unchanged from the original workflow.
+// ============================================================================
+
+export const UGC_IMAGE_PROMPT_SYSTEM = `ROLE: UGC Image Prompt Builder
 
 GOAL:
 Generate one concise, natural, and realistic image prompt (<=120 words) from a given product or reference image. The prompt must simulate authentic UGC (user-generated content) photography.
@@ -142,7 +146,7 @@ CHECKLIST BEFORE OUTPUT:
 - Product text preserved exactly?
 - Only JSON returned?`;
 
-export const imagePromptUser = ({ caption, imageDescription }) => `Your task is to create an image prompt following the system guidelines.
+export const ugcImagePromptUser = ({ caption, imageDescription }) => `Your task is to create an image prompt following the system guidelines.
 Ensure that the reference image is represented as **accurately as possible**, including all text elements.
 
 Use the following inputs:
@@ -153,11 +157,77 @@ ${caption || '(none provided)'}
 - **Reference image description:**
 ${imageDescription}`;
 
-// "AI Agent: Generate Video Script" node.
+export const ugcVideoScriptUser = ({ caption, imageDescription, model }) => `Create a UGC-style video prompt using both the reference image and the user description.
+
+**Inputs**
+- User description (optional):
+  \`${caption || '(none provided)'}\`
+- Reference image analysis (stay strictly faithful to what's visible):
+  \`${imageDescription}\`
+
+**Rules**
+- Keep the style casual, authentic, and realistic. Avoid studio-like or cinematic language.
+- Default model: \`${model || 'veo3_fast'}\`.
+- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.`;
+
+// ============================================================================
+// Normal Video - general purpose, style follows whatever the idea calls for.
+// ============================================================================
+
+export const GENERAL_IMAGE_PROMPT_SYSTEM = `ROLE: Image Prompt Builder
+
+GOAL:
+Generate one clear, vivid image prompt (<=120 words) from a given reference image and a user idea. Pick whatever visual tone best fits the idea - polished/cinematic, casual/candid, playful, dramatic - rather than defaulting to one style.
+
+RULES:
+- Always output **one JSON object only** with the key:
+  - \`image_prompt\`: (string with full description)
+- Do **not** add commentary, metadata, or extra keys. JSON only.
+
+GUIDELINES:
+- Read the user's idea first and let it choose the tone, lighting and framing.
+- Include concrete camera/lighting cues appropriate to that tone (e.g. studio softbox and shallow depth of field for a polished look, or handheld and natural light for a candid one).
+- Packaging/Text: preserve exactly as visible in the reference. Never invent claims, numbers, or badges.
+- Diversity: if people appear but are unspecified, vary gender/ethnicity naturally; default age range = 21-45.
+
+SAFETY:
+- No copyrighted character names.
+- No dialogue or scripts. Only describe scenes.
+
+OUTPUT CONTRACT:
+- JSON only, no prose outside.
+- Max 120 words in \`image_prompt\`.
+- Must cover: subject, action, mood, setting, style/camera, colors, and text accuracy.`;
+
+export const generalImagePromptUser = ({ caption, imageDescription }) => `Your task is to create an image prompt following the system guidelines.
+Ensure that the reference image is represented as **accurately as possible**, including all text elements.
+
+Use the following inputs:
+
+- **User's idea:**
+${caption || '(none provided)'}
+
+- **Reference image description:**
+${imageDescription}`;
+
+export const generalVideoScriptUser = ({ caption, imageDescription, model }) => `Create a video prompt using both the reference image and the user's idea below.
+
+**Inputs**
+- User idea:
+  \`${caption || '(none provided)'}\`
+- Reference image analysis (stay strictly faithful to what's visible):
+  \`${imageDescription}\`
+
+**Rules**
+- Choose whichever style, camera work and mood best serve this specific idea - cinematic, photorealistic, stylized, gritty or elegant. Do not default to one look; let the idea decide.
+- Default model: \`${model || 'veo3_fast'}\`.
+- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.`;
+
+// Shared by both video modes - only the user message above differs.
 export const videoScriptSystem = (masterSchema) => `system_prompt:
-  ## SYSTEM PROMPT: Structured Video Ad Prompt Generator
+  ## SYSTEM PROMPT: Structured Video Prompt Generator
   A - Ask:
-    Generate a structured video ad prompt for cinematic generation, strictly based on the master schema provided in: ${masterSchema}.
+    Generate a structured video prompt for cinematic generation, strictly based on the master schema provided in: ${masterSchema}.
     The final result must be a JSON object with exactly two top-level keys: \`title\` and \`final_prompt\`.
 
   G - Guidance:
@@ -182,36 +252,54 @@ export const videoScriptSystem = (masterSchema) => `system_prompt:
         "final_prompt": "{...stringified JSON of the full prompt...}"
       }`;
 
-export const videoScriptUser = ({ caption, imageDescription, model }) => `Create a UGC-style video prompt using both the reference image and the user description.
+// ============================================================================
+// Instagram Carousel - a topic in, a 6-slide swipeable carousel plan out.
+// ============================================================================
 
-**Inputs**
-- User description (optional):
-  \`${caption || '(none provided)'}\`
-- Reference image analysis (stay strictly faithful to what's visible):
-  \`${imageDescription}\`
+export const CAROUSEL_PLAN_SYSTEM = `ROLE: Instagram Carousel Content Planner
 
-**Rules**
-- Keep the style casual, authentic, and realistic. Avoid studio-like or cinematic language.
-- Default model: \`${model || 'veo3_fast'}\`.
-- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.`;
+GOAL:
+Turn a topic into a 6-slide swipeable Instagram carousel. Output ONE JSON object only, with a single key \`slides\`: an array of exactly 6 items, in order.
 
-// "Rewrite Caption with GPT-4o" node.
-export const captionUser = ({ idea, title }) => `You are rewriting a TikTok video script, caption, and overlay -
-not inventing a new one. You must follow this format and obey
-these rules strictly.
+Each slide item has exactly three keys:
+- \`headline\`: short punchy text for the slide, in TURKISH, max 8 words.
+- \`body\`: one supporting sentence, in TURKISH, max 18 words. Empty string "" is fine for slides that are headline-only (typically slide 1 and slide 6).
+- \`image_prompt\`: an English visual description (<=60 words) for the slide's background image - concrete subject, setting, mood, lighting, camera framing. Never describe adding text; the text is composited separately.
+
+STRUCTURE (classic hook -> value -> CTA arc):
+- Slide 1: the hook. Stops the scroll, states the topic's core promise or question.
+- Slides 2-5: one concrete point, tip, step or fact each - a coherent sequence, not four random facts.
+- Slide 6: a call to action (save/share/follow/comment) or a short wrap-up.
+
+RULES:
+- Turkish for headline/body, English for image_prompt.
+- Keep a consistent visual thread across the 6 image_prompt values (same setting family, palette or subject) so the carousel feels like one design system, not six unrelated images.
+- No copyrighted names, no fabricated statistics.
+- JSON only - no markdown, no commentary, no extra keys.`;
+
+export const carouselPlanUser = ({ idea, imageDescription }) => `Topic / idea:
+${idea || '(none provided)'}
+
+${imageDescription ? `Reference image analysis (keep the visual thread consistent with this where relevant):\n${imageDescription}` : 'No reference image was provided - invent a fitting, consistent visual style for the topic.'}
+
+Produce the 6-slide carousel plan now, following the system rules exactly.`;
+
+// ============================================================================
+// Shared final step: a ready-to-copy caption for whatever was produced.
+// ============================================================================
+
+export const socialCaptionUser = ({ idea, title, contentType }) => {
+  const kind = contentType === 'carousel' ? 'Instagram carousel post' : 'short vertical video';
+  return `You are writing a ready-to-post social media caption for a ${kind} - not inventing a new concept, just captioning the one already made.
 ---
 ### CONTEXT:
-Here is the content idea to use: ${idea || '(none provided)'}
+Content idea: ${idea || '(none provided)'}
+Title/hook used: ${title}
 
-and the Title is : ${title}
-
-
-Write the caption text using the topic.
-
+Write the caption text for this ${kind}.
 ---
-- MUST be under 200 characters (yes "Characters" not wordcount)
-this is an absolute MUST, no more than 200 characters!!!
+- MUST be under 200 characters (yes "characters", not word count). This is an absolute MUST.
 
 ### FINAL OUTPUT FORMAT (no markdown formatting):
-
-DO NOT return any explanations. Only return the Caption Text`;
+DO NOT return any explanations. Only return the caption text.`;
+};

@@ -10,14 +10,31 @@ const MAX_JOBS = 100;
 export const bus = new EventEmitter();
 bus.setMaxListeners(0);
 
-// The five stages match the sticky notes in the original workflow.
-export const STEP_DEFINITIONS = [
-  { id: 'collect', title: 'Fikir ve görsel toplama' },
-  { id: 'image', title: 'NanoBanana ile görsel üretimi' },
-  { id: 'script', title: 'Video senaryosu' },
-  { id: 'video', title: 'VEO3 ile video render' },
-  { id: 'publish', title: 'Tüm platformlara paylaşım' },
-];
+// Each content type walks through its own stages.
+const STEP_DEFINITIONS_BY_TYPE = {
+  video: [
+    { id: 'collect', title: 'Fikir ve görsel toplama' },
+    { id: 'image', title: 'Görsel üretimi' },
+    { id: 'script', title: 'Video senaryosu' },
+    { id: 'video', title: 'Video render' },
+    { id: 'caption', title: 'Paylaşım metni' },
+  ],
+  ugc: [
+    { id: 'collect', title: 'Fikir ve görsel toplama' },
+    { id: 'image', title: 'Görsel üretimi' },
+    { id: 'script', title: 'Video senaryosu' },
+    { id: 'video', title: 'Video render' },
+    { id: 'caption', title: 'Paylaşım metni' },
+  ],
+  carousel: [
+    { id: 'collect', title: 'Konu toplama' },
+    { id: 'plan', title: 'Carousel içerik planı' },
+    { id: 'slides', title: '6 slayt görseli' },
+    { id: 'caption', title: 'Paylaşım metni' },
+  ],
+};
+
+export const getStepDefinitions = (contentType) => STEP_DEFINITIONS_BY_TYPE[contentType] || STEP_DEFINITIONS_BY_TYPE.ugc;
 
 const jobs = new Map();
 let persistChain = Promise.resolve();
@@ -55,18 +72,19 @@ const emit = (job, event = 'job') => {
   persist();
 };
 
-export const createJob = ({ userId, imageKey, input }) => {
+export const createJob = ({ userId, imageKey, contentType, input }) => {
   const job = {
     id: crypto.randomUUID(),
     userId,
     imageKey,
+    contentType,
     status: 'queued',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     input,
-    steps: STEP_DEFINITIONS.map((step) => ({ ...step, status: 'pending', detail: '' })),
+    steps: getStepDefinitions(contentType).map((step) => ({ ...step, status: 'pending', detail: '' })),
     logs: [],
-    result: { posts: [] },
+    result: { slides: [] },
     error: null,
   };
   // Newest first, and keep the map from growing without bound.

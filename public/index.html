@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Viral Video Studio</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f0b429'/%3E%3Cpath d='M11 9l7 7-7 7z' fill='%2323180a'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -30,7 +33,7 @@
         <span class="brand-mark">VS</span>
         <div>
           <h1>Viral Video Studio</h1>
-          <p>Hesabınla giriş yap, kendi videolarını üret.</p>
+          <p>Hesabınla giriş yap, kendi içeriklerini üret.</p>
         </div>
       </div>
 
@@ -60,25 +63,39 @@
 
   <main class="layout" id="app" hidden>
     <section class="panel compose">
-      <h2>Yeni video</h2>
+      <div class="content-type-picker" role="tablist" id="content-type-picker">
+        <button class="content-type on" data-type="video" type="button" role="tab">
+          <strong>Normal Video</strong>
+          <span>Serbest üslupta, fikrine göre</span>
+        </button>
+        <button class="content-type" data-type="ugc" type="button" role="tab">
+          <strong>UGC Reklam</strong>
+          <span>Samimi, elde çekilmiş tarz</span>
+        </button>
+        <button class="content-type" data-type="carousel" type="button" role="tab">
+          <strong>Instagram Carousel</strong>
+          <span>6 slaytlık kaydırmalı gönderi</span>
+        </button>
+      </div>
 
-      <label class="dropzone" id="dropzone">
+      <label class="dropzone" id="dropzone" tabindex="0">
         <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
         <img id="preview" alt="" hidden />
+        <button id="preview-clear" class="link-button preview-clear" type="button" hidden title="Görseli kaldır">✕</button>
         <div id="dropzone-empty" class="dropzone-empty">
-          <strong>Referans görseli bırak</strong>
-          <span>veya seçmek için tıkla · PNG, JPG, WEBP · max 20 MB</span>
+          <strong id="dropzone-title">Referans görseli bırak</strong>
+          <span id="dropzone-hint">veya seçmek için tıkla · PNG, JPG, WEBP · max 20 MB</span>
         </div>
       </label>
 
       <label class="field">
-        <span>Video fikri</span>
+        <span id="idea-label">Video fikri</span>
         <textarea id="idea" rows="4" placeholder="Örn: Ürünü mutfak tezgahında tek çekimde tanıtan samimi bir UGC klibi"></textarea>
       </label>
 
-      <div class="field-row">
+      <div class="field-row" id="video-options">
         <label class="field">
-          <span>VEO3 modeli</span>
+          <span>Model</span>
           <select id="model">
             <option value="veo3_fast">veo3_fast</option>
             <option value="veo3">veo3</option>
@@ -93,12 +110,7 @@
         </label>
       </div>
 
-      <div class="field">
-        <span>Paylaşılacak platformlar</span>
-        <div id="platform-picker" class="platform-picker"></div>
-      </div>
-
-      <button id="start" class="primary" type="button" disabled>Otomasyonu başlat</button>
+      <button id="start" class="primary" type="button" disabled>İçerik oluştur</button>
       <p id="compose-error" class="error" hidden></p>
     </section>
 
@@ -110,11 +122,12 @@
 
       <ol id="steps" class="steps"></ol>
 
-      <div id="outputs" class="outputs" hidden>
+      <!-- Video çıktıları (Normal Video / UGC Reklam) -->
+      <div id="outputs-video" class="outputs" hidden>
         <div class="output-grid">
           <figure class="output-card">
-            <figcaption>Düzenlenmiş görsel</figcaption>
-            <img id="out-image" alt="NanoBanana çıktısı" hidden />
+            <figcaption>Üretilen görsel</figcaption>
+            <img id="out-image" alt="Üretilen görsel" hidden />
             <p id="out-image-empty" class="muted">Henüz üretilmedi</p>
           </figure>
           <figure class="output-card">
@@ -126,25 +139,36 @@
 
         <div class="output-text">
           <details open>
-            <summary>Başlık &amp; caption</summary>
+            <summary>Başlık &amp; paylaşım metni</summary>
             <p id="out-title" class="mono"></p>
             <p id="out-caption"></p>
           </details>
           <details>
             <summary>Görsel analizi</summary>
-            <pre id="out-description" class="mono"></pre>
+            <pre id="out-description"></pre>
           </details>
           <details>
             <summary>Görsel prompt'u</summary>
-            <pre id="out-image-prompt" class="mono"></pre>
+            <pre id="out-image-prompt"></pre>
           </details>
           <details>
-            <summary>VEO3 prompt'u</summary>
-            <pre id="out-final-prompt" class="mono"></pre>
+            <summary>Video prompt'u</summary>
+            <pre id="out-final-prompt"></pre>
           </details>
         </div>
+      </div>
 
-        <div id="posts" class="posts"></div>
+      <!-- Carousel çıktıları -->
+      <div id="outputs-carousel" class="outputs" hidden>
+        <div class="carousel-toolbar">
+          <span id="carousel-count" class="muted"></span>
+          <button id="carousel-download-all" class="ghost" type="button">Tümünü indir</button>
+        </div>
+        <div id="carousel-grid" class="carousel-grid"></div>
+        <details open>
+          <summary>Paylaşım metni</summary>
+          <p id="out-carousel-caption"></p>
+        </details>
       </div>
 
       <details class="logs" open>
@@ -162,7 +186,7 @@
         <table id="projects">
           <thead>
             <tr>
-              <th>Görsel</th><th>Başlık</th><th>Caption</th><th>Durum</th><th></th>
+              <th>Önizleme</th><th>Tür</th><th>Başlık</th><th>Metin</th><th>Durum</th><th></th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -180,7 +204,7 @@
         <div id="provider-status" class="provider-status"></div>
       </div>
 
-      <p class="muted">Her platform için Blotato hesap kimliğini gir; bu hesaplar yalnızca senin kullanıcına bağlıdır.</p>
+      <p class="muted">Video içerikleri için varsayılanlar (Normal Video ve UGC Reklam'da kullanılır).</p>
       <div class="field-row">
         <label class="field">
           <span>Varsayılan model</span>
@@ -191,7 +215,6 @@
           <input id="set-aspect" type="text" />
         </label>
       </div>
-      <div id="settings-platforms" class="settings-platforms"></div>
       <div class="settings-actions">
         <button value="cancel" class="ghost" type="submit">Kapat</button>
         <button id="save-settings" value="save" class="primary" type="submit">Kaydet</button>

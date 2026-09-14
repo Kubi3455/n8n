@@ -7,7 +7,7 @@ import { config, paths, providerStatus, setPublicUrl } from './config.js';
 import { createServer, listenOnFreePort } from './http-server.js';
 import { bus, createJob, getJob, listJobs, restoreJobs } from './jobs.js';
 import { runPipeline } from './pipeline.js';
-import { deleteProject, getSettings, listProjects, saveSettings } from './store.js';
+import { CONTENT_TYPES, deleteProject, getSettings, listProjects, saveSettings } from './store.js';
 
 const app = createServer({
   staticDirs: [
@@ -25,9 +25,14 @@ const EXTENSION_BY_MIME = {
   'image/gif': '.gif',
 };
 
-/** Decodes the browser's data URL upload into a file on disk. */
+/**
+ * Decodes the browser's data URL upload into a file on disk. Only the carousel allows a
+ * missing image (a topic alone is enough); the two video modes still require one.
+ */
 const saveUpload = async (dataUrl, userId) => {
-  const match = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(dataUrl || '');
+  if (!dataUrl) return { imageKey: null, filePath: null, publicUrl: null };
+
+  const match = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(dataUrl);
   if (!match) throw new Error('Bir görsel yükleyin');
 
   const [, mime, base64] = match;
@@ -45,6 +50,9 @@ const saveUpload = async (dataUrl, userId) => {
 
   return { imageKey, filePath: path.join(paths.uploads, fileName), publicUrl: `${config.publicUrl}/uploads/${fileName}` };
 };
+
+/** A carousel with no uploaded image still needs a stable project key. */
+const keyFromIdea = (idea) => crypto.createHash('sha1').update(`${Date.now()}:${idea}`).digest('hex').slice(0, 16);
 
 const fail = (res, error) => res.json(error.status || 400, { error: error.message });
 
@@ -123,30 +131,36 @@ app.get('/api/jobs/:id', (req, res) => {
 app.post('/api/jobs', async (req, res) => {
   if (!requireAuth(req, res)) return;
   try {
-    const { image, idea = '', model, aspectRatio, platforms } = req.body;
+    const { image, idea = '', model, aspectRatio, contentType } = req.body;
+    const type = CONTENT_TYPES[contentType] || CONTENT_TYPES.ugc;
+
+    if (type !== 'carousel' && !image) return res.json(400, { error: 'Bir görsel yükleyin' });
+    if (!String(idea).trim() && !image) return res.json(400, { error: 'Bir konu ya da fikir yazın' });
+
     const settings = await getSettings(req.user.id);
     const upload = await saveUpload(image, req.user.id);
+    // Scoped by content type too: the same photo can become a video AND a carousel
+    // without one overwriting the other's project.
+    const imageKey = `${type}:${upload.imageKey || keyFromIdea(idea)}`;
 
     const running = listJobs(req.user.id).find(
-      (job) => job.imageKey === upload.imageKey && (job.status === 'running' || job.status === 'queued'),
+      (job) => job.imageKey === imageKey && (job.status === 'running' || job.status === 'queued'),
     );
-    if (running) return res.json(409, { error: 'Bu görsel için bir akış zaten çalışıyor' });
+    if (running) return res.json(409, { error: 'Bu içerik için bir akış zaten çalışıyor' });
 
     const job = createJob({
       userId: req.user.id,
-      imageKey: upload.imageKey,
+      imageKey,
+      contentType: type,
       input: {
         idea: String(idea).slice(0, 2000),
         model: model || settings.model,
         aspectRatio: aspectRatio || settings.aspectRatio,
-        platforms: Array.isArray(platforms) && platforms.length
-          ? platforms
-          : settings.platforms.filter((platform) => platform.enabled).map((platform) => platform.id),
       },
     });
 
     // Fire and forget: progress reaches the browser over SSE.
-    runPipeline(job, upload).catch((error) => console.error('Pipeline crashed:', error));
+    runPipeline(job, { ...upload, imageKey }).catch((error) => console.error('Pipeline crashed:', error));
     res.json(202, job);
   } catch (error) {
     fail(res, error);
@@ -197,7 +211,7 @@ const openBrowser = (url) => {
 };
 
 const providers = providerStatus();
-const missing = ['openai', 'fal', 'kie', 'blotato'].filter((key) => !providers[key]);
+const missing = ['openai', 'fal', 'kie'].filter((key) => !providers[key]);
 console.log('');
 console.log('  ===========================================');
 console.log('   VIRAL VIDEO STUDIO');

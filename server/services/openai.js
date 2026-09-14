@@ -2,13 +2,18 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config, useMock } from '../config.js';
 import {
-  IMAGE_PROMPT_SYSTEM,
+  CAROUSEL_PLAN_SYSTEM,
+  GENERAL_IMAGE_PROMPT_SYSTEM,
   MASTER_PROMPT_SCHEMA,
+  UGC_IMAGE_PROMPT_SYSTEM,
   VISION_PROMPT,
-  captionUser,
-  imagePromptUser,
+  carouselPlanUser,
+  generalImagePromptUser,
+  generalVideoScriptUser,
+  socialCaptionUser,
+  ugcImagePromptUser,
+  ugcVideoScriptUser,
   videoScriptSystem,
-  videoScriptUser,
 } from '../prompts.js';
 import { requestJson, sleep } from './http.js';
 
@@ -55,7 +60,7 @@ const parseJsonOutput = (raw) => {
   }
 };
 
-/** Step 2 - "OpenAI Vision: Analyze Reference Image" (YAML description of the reference image). */
+/** "OpenAI Vision: Analyze Reference Image" - shared by every content type. */
 export const analyzeImage = async ({ filePath, imageUrl }) => {
   if (useMock('openai')) {
     await sleep(600);
@@ -86,25 +91,33 @@ export const analyzeImage = async ({ filePath, imageUrl }) => {
   });
 };
 
-/** Step 2 - "Generate Image Prompt" agent (structured output: { image_prompt }). */
-export const generateImagePrompt = async ({ caption, imageDescription }) => {
+const MOCK_IMAGE_PROMPT = {
+  ugc:
+    'a person casually holding the product near a kitchen counter; action: turning the package to read the label; '
+    + 'mood: relaxed weekday morning; setting: small apartment kitchen with a mug and crumbs on the counter; '
+    + 'style/camera: phone snapshot, handheld framing, off-center composition, natural window light, mild grain; '
+    + 'colors: charcoal and warm yellow; text accuracy: keep every word on the package exactly as visible',
+  general:
+    'the product centered on a dark reflective surface; action: a slow reveal, package slightly turned toward camera; '
+    + 'mood: premium, confident; setting: minimal studio backdrop with a soft gradient; '
+    + 'style/camera: studio softbox lighting, shallow depth of field, straight-on framing; '
+    + 'colors: charcoal and warm yellow; text accuracy: keep every word on the package exactly as visible',
+};
+
+/** "Generate Image Prompt" agent - style depends on content type ('ugc' | 'general'). */
+export const generateImagePrompt = async ({ caption, imageDescription, style = 'ugc' }) => {
   if (useMock('openai')) {
     await sleep(500);
-    return {
-      image_prompt:
-        'a person casually holding the product near a kitchen counter; action: turning the package to read the label; '
-        + 'mood: relaxed weekday morning; setting: small apartment kitchen with a mug and crumbs on the counter; '
-        + 'style/camera: phone snapshot, handheld framing, off-center composition, natural window light, mild grain; '
-        + 'colors: charcoal and warm yellow; text accuracy: keep every word on the package exactly as visible',
-    };
+    return { image_prompt: MOCK_IMAGE_PROMPT[style] || MOCK_IMAGE_PROMPT.general };
   }
 
+  const isUgc = style === 'ugc';
   const raw = await chat({
     model: config.openai.agentModel,
     jsonMode: true,
     messages: [
-      { role: 'system', content: IMAGE_PROMPT_SYSTEM },
-      { role: 'user', content: imagePromptUser({ caption, imageDescription }) },
+      { role: 'system', content: isUgc ? UGC_IMAGE_PROMPT_SYSTEM : GENERAL_IMAGE_PROMPT_SYSTEM },
+      { role: 'user', content: (isUgc ? ugcImagePromptUser : generalImagePromptUser)({ caption, imageDescription }) },
     ],
   });
 
@@ -113,40 +126,64 @@ export const generateImagePrompt = async ({ caption, imageDescription }) => {
   return parsed;
 };
 
-/** Step 3 - "AI Agent: Generate Video Script" (structured output: { title, final_prompt }). */
-export const generateVideoScript = async ({ caption, imageDescription, model }) => {
+const MOCK_VIDEO_SCRIPT = {
+  ugc: {
+    title: 'Morning Counter Unboxing In One Take',
+    schema: {
+      description: 'A quick handheld clip of someone opening the product on a kitchen counter.',
+      style: 'photorealistic',
+      camera: { type: 'fixed', movement: 'slight handheld drift', lens: '26mm phone lens' },
+      lighting: { type: 'natural', sources: 'morning window light', FX: 'none' },
+      environment: { location: 'small apartment kitchen', set_pieces: ['mug', 'crumbs', 'wooden counter'], mood: 'relaxed' },
+      elements: ['product package with visible label'],
+      subject: {
+        character: { description: 'adult in a plain hoodie', pose: 'leaning over the counter', lip_sync_line: '' },
+        product: { brand: 'Demo Brand', model: 'Starter Pack', action: 'package opened and tilted toward the camera' },
+      },
+      motion: { type: 'unboxing', details: 'hands lift the lid, turn the package, set it down' },
+      ending: 'the package rests on the counter, label facing camera',
+      text: 'none',
+      format: '16:9',
+      keywords: ['demo brand', 'ugc', 'unboxing', 'handheld', 'ambient', 'everyday'],
+    },
+  },
+  general: {
+    title: 'Studio Reveal With A Slow Push-In',
+    schema: {
+      description: 'A confident studio reveal of the product on a reflective surface.',
+      style: 'cinematic',
+      camera: { type: 'dolly', movement: 'slow push-in, then a gentle orbit', lens: '50mm, shallow depth of field' },
+      lighting: { type: 'dramatic', sources: 'softbox key light with a rim light', FX: 'subtle reflections' },
+      environment: { location: 'minimal studio backdrop', set_pieces: ['dark reflective plinth', 'soft gradient background'], mood: 'premium, confident' },
+      elements: ['product with visible label, catching the rim light'],
+      subject: {
+        character: { description: '', pose: '', lip_sync_line: '' },
+        product: { brand: 'Demo Brand', model: 'Signature Edition', action: 'slow 180-degree reveal on the plinth' },
+      },
+      motion: { type: 'reveal', details: 'camera pushes in as the product slowly rotates into full view' },
+      ending: 'freeze frame on the product, logo catching a final glint of light',
+      text: 'logo pulse at end only',
+      format: '16:9',
+      keywords: ['demo brand', 'studio', 'reveal', 'cinematic', 'premium', 'product'],
+    },
+  },
+};
+
+/** "AI Agent: Generate Video Script" - style depends on content type ('ugc' | 'general'). */
+export const generateVideoScript = async ({ caption, imageDescription, model, style = 'ugc' }) => {
   if (useMock('openai')) {
     await sleep(700);
-    return {
-      title: 'Morning Counter Unboxing In One Take',
-      final_prompt: JSON.stringify({
-        description: 'A quick handheld clip of someone opening the product on a kitchen counter.',
-        style: 'photorealistic',
-        camera: { type: 'fixed', movement: 'slight handheld drift', lens: '26mm phone lens' },
-        lighting: { type: 'natural', sources: 'morning window light', FX: 'none' },
-        environment: { location: 'small apartment kitchen', set_pieces: ['mug', 'crumbs', 'wooden counter'], mood: 'relaxed' },
-        elements: ['product package with visible label'],
-        subject: {
-          character: { description: 'adult in a plain hoodie', pose: 'leaning over the counter', lip_sync_line: '' },
-          product: { brand: 'Demo Brand', model: 'Starter Pack', action: 'package opened and tilted toward the camera' },
-        },
-        motion: { type: 'unboxing', details: 'hands lift the lid, turn the package, set it down' },
-        VFX: { transformation: 'none', impact: 'none', particles: 'none', environment: 'none' },
-        audio: { music: 'ambient tone', sfx: ['paper rustle'], ambience: 'kitchen room tone', voiceover: { delivery: 'casual', line: '' } },
-        ending: 'the package rests on the counter, label facing camera',
-        text: 'none',
-        format: '16:9',
-        keywords: ['demo brand', 'ugc', 'unboxing', 'handheld', 'ambient', 'everyday'],
-      }),
-    };
+    const mock = MOCK_VIDEO_SCRIPT[style] || MOCK_VIDEO_SCRIPT.general;
+    return { title: mock.title, final_prompt: JSON.stringify(mock.schema) };
   }
 
+  const isUgc = style === 'ugc';
   const raw = await chat({
     model: config.openai.agentModel,
     jsonMode: true,
     messages: [
       { role: 'system', content: videoScriptSystem(MASTER_PROMPT_SCHEMA) },
-      { role: 'user', content: videoScriptUser({ caption, imageDescription, model }) },
+      { role: 'user', content: (isUgc ? ugcVideoScriptUser : generalVideoScriptUser)({ caption, imageDescription, model }) },
     ],
   });
 
@@ -159,19 +196,56 @@ export const generateVideoScript = async ({ caption, imageDescription, model }) 
   return parsed;
 };
 
-/** Step 5 - "Rewrite Caption with GPT-4o" (hard limit: under 200 characters). */
-export const rewriteCaption = async ({ idea, title }) => {
+const MOCK_CAROUSEL_SLIDES = [
+  { headline: 'Sabahları Bu Hatayı Yapma', body: '', image_prompt: 'a clean minimal desk scene at sunrise, soft warm light, top-down flat lay, product centered' },
+  { headline: '1. Adım: Hazırlık', body: 'İşe başlamadan önce ortamı sadeleştir.', image_prompt: 'a tidy minimal desk with a single notebook, soft warm light, top-down flat lay' },
+  { headline: '2. Adım: Odaklan', body: 'Tek bir işe 25 dakika ver, dikkatini dağıtma.', image_prompt: 'a warm-lit desk scene with a timer object, soft shadows, top-down flat lay' },
+  { headline: '3. Adım: Kısa Mola', body: 'Her 25 dakikada 5 dakika ayağa kalk.', image_prompt: 'a bright window scene suggesting a short break, soft warm light, minimal composition' },
+  { headline: '4. Adım: Kaydet', body: 'Günün sonunda küçük bir not al.', image_prompt: 'a notebook with a pen on a warm-lit desk, top-down flat lay, minimal composition' },
+  { headline: 'Bunu Kaydet, Sonra Uygula', body: '', image_prompt: 'a clean minimal desk scene at golden hour, soft warm light, top-down flat lay, calm mood' },
+];
+
+/** New: turns an idea into a 6-slide Instagram carousel plan. */
+export const generateCarouselPlan = async ({ idea, imageDescription }) => {
+  if (useMock('openai')) {
+    await sleep(700);
+    return { slides: MOCK_CAROUSEL_SLIDES };
+  }
+
+  const raw = await chat({
+    model: config.openai.agentModel,
+    jsonMode: true,
+    messages: [
+      { role: 'system', content: CAROUSEL_PLAN_SYSTEM },
+      { role: 'user', content: carouselPlanUser({ idea, imageDescription }) },
+    ],
+  });
+
+  const parsed = parseJsonOutput(raw);
+  if (!Array.isArray(parsed.slides) || parsed.slides.length === 0) {
+    throw new Error('Carousel planner returned no "slides" array');
+  }
+  // Trust but verify: keep exactly 6, padding or trimming defensively rather than failing the run.
+  const slides = parsed.slides.slice(0, 6);
+  while (slides.length < 6) slides.push({ headline: '', body: '', image_prompt: idea || 'a clean minimal scene' });
+  return { slides };
+};
+
+/** Final step for every content type: a ready-to-copy caption, always under 200 characters. */
+export const writeSocialCaption = async ({ idea, title, contentType }) => {
   if (useMock('openai')) {
     await sleep(400);
-    return `${title} - shot it in one take on the kitchen counter. no studio, no script, just the product doing its thing.`;
+    return contentType === 'carousel'
+      ? `${title} — kaydır, ipuçlarını kaçırma. Faydalı bulduysan kaydet.`
+      : `${title} — tek çekimde, olduğu gibi.`;
   }
 
   const raw = await chat({
     model: config.openai.captionModel,
-    messages: [{ role: 'user', content: captionUser({ idea, title }) }],
+    messages: [{ role: 'user', content: socialCaptionUser({ idea, title, contentType }) }],
   });
 
   const caption = raw.replace(/^["']|["']$/g, '').trim();
-  // The prompt insists on <200 characters; enforce it here so downstream posts never fail on length.
+  // The prompt insists on <200 characters; enforce it here so the delivered text never breaks that promise.
   return caption.length > 200 ? `${caption.slice(0, 197).trimEnd()}...` : caption;
 };

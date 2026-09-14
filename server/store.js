@@ -8,25 +8,18 @@ const SETTINGS_FILE = path.join(paths.data, 'settings.json');
 export const PROJECT_STATUS = {
   processing: 'processing',
   ready: 'ready',
-  published: 'published',
   error: 'error',
 };
 
-// Publishing targets, one per social account the member connects.
+export const CONTENT_TYPES = {
+  video: 'video', // Normal Video - general purpose
+  ugc: 'ugc', // UGC Reklam Videosu
+  carousel: 'carousel', // Instagram Carousel
+};
+
 export const DEFAULT_SETTINGS = {
   model: 'veo3_fast',
   aspectRatio: '16:9',
-  platforms: [
-    { id: 'tiktok', label: 'TikTok', enabled: true, accountId: '' },
-    { id: 'instagram', label: 'Instagram', enabled: true, accountId: '' },
-    { id: 'youtube', label: 'YouTube', enabled: true, accountId: '', privacyStatus: 'private', notifySubscribers: false },
-    { id: 'linkedin', label: 'LinkedIn', enabled: true, accountId: '' },
-    { id: 'facebook', label: 'Facebook', enabled: true, accountId: '', pageId: '' },
-    { id: 'twitter', label: 'Twitter (X)', enabled: true, accountId: '' },
-    { id: 'threads', label: 'Threads', enabled: true, accountId: '' },
-    { id: 'bluesky', label: 'Bluesky', enabled: true, accountId: '' },
-    { id: 'pinterest', label: 'Pinterest', enabled: true, accountId: '', boardId: '' },
-  ],
 };
 
 let writeChain = Promise.resolve();
@@ -57,8 +50,9 @@ export const getProject = async (userId, imageKey) =>
   (await allProjects()).find((project) => project.userId === userId && project.imageKey === imageKey) || null;
 
 /**
- * Creates or updates one member's project. The image content hash is the key, so
- * re-submitting the same picture refreshes that project instead of duplicating it.
+ * Creates or updates one member's project. The content hash (of the upload, or of the
+ * idea text when there is no upload) is the key, so re-submitting the same input refreshes
+ * that project instead of duplicating it.
  */
 export const upsertProject = async (userId, imageKey, values) => {
   const projects = await allProjects();
@@ -70,6 +64,7 @@ export const upsertProject = async (userId, imageKey, values) => {
       id: `${userId}:${imageKey}`,
       userId,
       imageKey,
+      contentType: CONTENT_TYPES.ugc,
       imageUrl: '',
       idea: '',
       imageDescription: '',
@@ -78,6 +73,7 @@ export const upsertProject = async (userId, imageKey, values) => {
       caption: '',
       finalPrompt: '',
       videoUrl: '',
+      slides: [], // carousel only: [{ index, imageUrl, headline, body }]
       status: PROJECT_STATUS.processing,
       createdAt: now,
       updatedAt: now,
@@ -108,27 +104,12 @@ export const deleteProjectsOfUser = async (userId) => {
 
 const allSettings = () => readJsonFile(SETTINGS_FILE, {});
 
-/** Every member keeps their own defaults and their own social accounts. */
-export const getSettings = async (userId) => {
-  const stored = (await allSettings())[userId] || {};
-  const platforms = DEFAULT_SETTINGS.platforms.map((base) => ({
-    ...base,
-    ...(stored.platforms || []).find((platform) => platform.id === base.id),
-  }));
-  return { ...DEFAULT_SETTINGS, ...stored, platforms };
-};
+/** Every member keeps their own defaults (which VEO3 model, which aspect ratio). */
+export const getSettings = async (userId) => ({ ...DEFAULT_SETTINGS, ...(await allSettings())[userId] });
 
 export const saveSettings = async (userId, patch) => {
   const settings = await allSettings();
-  const current = await getSettings(userId);
-  const next = {
-    ...current,
-    ...patch,
-    platforms: current.platforms.map((platform) => ({
-      ...platform,
-      ...(patch.platforms || []).find((candidate) => candidate.id === platform.id),
-    })),
-  };
+  const next = { ...(await getSettings(userId)), ...patch };
   settings[userId] = next;
   await writeJsonFile(SETTINGS_FILE, settings);
   return next;

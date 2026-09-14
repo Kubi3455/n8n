@@ -1,11 +1,46 @@
 const $ = (id) => document.getElementById(id);
 
+const CONTENT_TYPES = {
+  video: {
+    label: 'Normal Video',
+    ideaLabel: 'Video fikri',
+    ideaPlaceholder: 'Örn: Ürünü stüdyoda şık bir şekilde tanıtan sinematik bir video',
+    dropzoneTitle: 'Referans görseli bırak',
+    dropzoneHint: 'veya seçmek için tıkla · PNG, JPG, WEBP · max 20 MB',
+    imageRequired: true,
+    videoOptions: true,
+    steps: ['Fikir ve görsel toplama', 'Görsel üretimi', 'Video senaryosu', 'Video render', 'Paylaşım metni'],
+  },
+  ugc: {
+    label: 'UGC Reklam',
+    ideaLabel: 'Video fikri',
+    ideaPlaceholder: 'Örn: Ürünü mutfak tezgahında tek çekimde tanıtan samimi bir UGC klibi',
+    dropzoneTitle: 'Referans görseli bırak',
+    dropzoneHint: 'veya seçmek için tıkla · PNG, JPG, WEBP · max 20 MB',
+    imageRequired: true,
+    videoOptions: true,
+    steps: ['Fikir ve görsel toplama', 'Görsel üretimi', 'Video senaryosu', 'Video render', 'Paylaşım metni'],
+  },
+  carousel: {
+    label: 'Instagram Carousel',
+    ideaLabel: 'Carousel konusu',
+    ideaPlaceholder: 'Örn: Yeni başlayanlar için odaklanma teknikleri',
+    dropzoneTitle: 'İsteğe bağlı: marka/ürün görseli',
+    dropzoneHint: 'Görsel vermezsen konuya uygun bir görsel üretilir · PNG, JPG, WEBP',
+    imageRequired: false,
+    videoOptions: false,
+    steps: ['Konu toplama', 'Carousel içerik planı', '6 slayt görseli', 'Paylaşım metni'],
+  },
+};
+
+const PROJECT_TYPE_LABELS = { video: 'Normal Video', ugc: 'UGC Reklam', carousel: 'Carousel' };
+
 const state = {
   user: null,
   settings: null,
   providers: null,
+  contentType: 'video',
   image: null,
-  selected: new Set(),
   activeJobId: null,
   jobs: new Map(),
 };
@@ -19,30 +54,30 @@ const api = async (url, options) => {
 
 const time = (iso) => new Date(iso).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]
+  ));
+}
+
 // ---------- providers -------------------------------------------------------
 const PROVIDERS = [
   { key: 'openai', label: 'Metin ve görsel analizi' },
   { key: 'fal', label: 'Görsel üretimi' },
   { key: 'kie', label: 'Video üretimi' },
-  { key: 'blotato', label: 'Sosyal medya paylaşımı' },
 ];
 
 const isLive = (providers, key) => providers[key] && !providers.mockMode;
 
-/**
- * Tek bir gösterge: bir servis bile örnek verilerle çalışıyorsa görünür,
- * hepsi canlıya geçtiğinde kendiliğinden kaybolur.
- */
 const renderMode = (providers) => {
   const pill = $('mode-pill');
   const mocked = PROVIDERS.filter((provider) => !isLive(providers, provider.key));
   pill.hidden = mocked.length === 0;
   pill.title = mocked.length
-    ? 'Bazı servisler örnek verilerle çalışıyor: gerçek video üretilmez, paylaşım yapılmaz. Ayrıntı için tıkla.'
+    ? 'Bazı servisler örnek verilerle çalışıyor: gerçek içerik üretilmez. Ayrıntı için tıkla.'
     : '';
 };
 
-/** Ayrıntılı durum yalnızca Ayarlar penceresinde. */
 const renderProviderStatus = (providers) => {
   $('provider-status').innerHTML = PROVIDERS
     .map((provider) => {
@@ -55,43 +90,69 @@ const renderProviderStatus = (providers) => {
     .join('');
 };
 
-// ---------- compose form ----------------------------------------------------
-const renderPlatformPicker = () => {
-  $('platform-picker').innerHTML = state.settings.platforms
-    .map((platform) => {
-      const on = state.selected.has(platform.id);
-      const unconfigured = !platform.accountId;
-      return `<label class="platform-toggle ${on ? 'on' : ''} ${unconfigured ? 'unconfigured' : ''}" title="${unconfigured ? 'Hesap kimliği ayarlanmadı' : platform.accountId}">
-        <input type="checkbox" value="${platform.id}" ${on ? 'checked' : ''} />${platform.label}
-      </label>`;
-    })
-    .join('');
+// ---------- compose form: content type switching ----------------------------
+const applyContentType = (type) => {
+  state.contentType = type;
+  const spec = CONTENT_TYPES[type];
 
-  for (const input of $('platform-picker').querySelectorAll('input')) {
-    input.addEventListener('change', () => {
-      if (input.checked) state.selected.add(input.value);
-      else state.selected.delete(input.value);
-      renderPlatformPicker();
-    });
+  for (const button of $('content-type-picker').querySelectorAll('.content-type')) {
+    button.classList.toggle('on', button.dataset.type === type);
   }
+
+  $('dropzone-title').textContent = spec.dropzoneTitle;
+  $('dropzone-hint').textContent = spec.dropzoneHint;
+  $('idea-label').textContent = spec.ideaLabel;
+  $('idea').placeholder = spec.ideaPlaceholder;
+  $('video-options').hidden = !spec.videoOptions;
+
+  updateStartEnabled();
+  emptyRun();
+};
+
+const updateStartEnabled = () => {
+  const spec = CONTENT_TYPES[state.contentType];
+  const hasImage = Boolean(state.image);
+  const hasIdea = $('idea').value.trim().length > 0;
+  $('start').disabled = spec.imageRequired ? !hasImage : !(hasImage || hasIdea);
 };
 
 const setImage = (file) => {
-  if (!file) return;
+  if (!file || !file.type.startsWith('image/')) return;
   const reader = new FileReader();
   reader.onload = () => {
     state.image = reader.result;
     $('preview').src = reader.result;
     $('preview').hidden = false;
+    $('preview-clear').hidden = false;
     $('dropzone-empty').hidden = true;
-    $('start').disabled = false;
+    updateStartEnabled();
   };
   reader.readAsDataURL(file);
+};
+
+const clearImage = () => {
+  state.image = null;
+  $('file').value = '';
+  $('preview').hidden = true;
+  $('preview-clear').hidden = true;
+  $('dropzone-empty').hidden = false;
+  updateStartEnabled();
 };
 
 const wireDropzone = () => {
   const zone = $('dropzone');
   $('file').addEventListener('change', (event) => setImage(event.target.files[0]));
+  $('preview-clear').addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    clearImage();
+  });
+  zone.addEventListener('keydown', (event) => {
+    if ((event.key === 'Enter' || event.key === ' ') && event.target === zone) {
+      event.preventDefault();
+      $('file').click();
+    }
+  });
 
   for (const type of ['dragenter', 'dragover']) {
     zone.addEventListener(type, (event) => {
@@ -106,6 +167,8 @@ const wireDropzone = () => {
     });
   }
   zone.addEventListener('drop', (event) => setImage(event.dataTransfer.files[0]));
+
+  $('idea').addEventListener('input', updateStartEnabled);
 };
 
 const start = async () => {
@@ -116,11 +179,11 @@ const start = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        contentType: state.contentType,
         image: state.image,
         idea: $('idea').value,
         model: $('model').value,
         aspectRatio: $('aspect').value,
-        platforms: [...state.selected],
       }),
     });
     state.activeJobId = job.id;
@@ -129,15 +192,15 @@ const start = async () => {
     $('compose-error').textContent = error.message;
     $('compose-error').hidden = false;
   } finally {
-    $('start').disabled = !state.image;
+    updateStartEnabled();
   }
 };
 
-// ---------- run view --------------------------------------------------------
+// ---------- run view: steps & log --------------------------------------------
 const STATUS_LABELS = { queued: 'sırada', running: 'çalışıyor', completed: 'tamamlandı', failed: 'hata' };
 
-const renderSteps = (job) => {
-  $('steps').innerHTML = job.steps
+const renderSteps = (steps) => {
+  $('steps').innerHTML = steps
     .map((step, index) => `<li class="step ${step.status}">
       <span class="step-index">${step.status === 'done' ? '✓' : index + 1}</span>
       <span>
@@ -149,10 +212,21 @@ const renderSteps = (job) => {
     .join('');
 };
 
-const renderOutputs = (job) => {
+const renderLog = (job) => {
+  const box = $('log');
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+  box.innerHTML = job.logs
+    .map((entry) => `<div class="log-line ${entry.level}"><time>${time(entry.ts)}</time><span>${escapeHtml(entry.message)}</span></div>`)
+    .join('');
+  if (atBottom) box.scrollTop = box.scrollHeight;
+};
+
+// ---------- run view: video outputs ------------------------------------------
+const renderVideoOutputs = (job) => {
   const { result } = job;
   const hasAnything = result.imageDescription || result.editedImageUrl || result.videoUrl;
-  $('outputs').hidden = !hasAnything;
+  $('outputs-video').hidden = !hasAnything;
+  $('outputs-carousel').hidden = true;
   if (!hasAnything) return;
 
   const image = $('out-image');
@@ -170,36 +244,183 @@ const renderOutputs = (job) => {
   $('out-description').textContent = result.imageDescription || '';
   $('out-image-prompt').textContent = result.imagePrompt || '';
   $('out-final-prompt').textContent = result.finalPrompt || '';
-
-  $('posts').innerHTML = (result.posts || [])
-    .map((post) => `<div class="post ${post.status}">
-      <strong>${post.label}</strong>
-      <span>${post.status} — ${escapeHtml(post.detail || '')}</span>
-    </div>`)
-    .join('');
 };
 
-const renderLog = (job) => {
-  const box = $('log');
-  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
-  box.innerHTML = job.logs
-    .map((entry) => `<div class="log-line ${entry.level}"><time>${time(entry.ts)}</time><span>${escapeHtml(entry.message)}</span></div>`)
-    .join('');
-  if (atBottom) box.scrollTop = box.scrollHeight;
+// ---------- run view: carousel outputs (client-side text compositing) --------
+const CAROUSEL_FONT = "'Manrope', ui-sans-serif, sans-serif";
+const CANVAS_W = 1080;
+const CANVAS_H = 1350;
+const renderedCanvases = new Map(); // slide key -> canvas element, so "download all" doesn't redraw
+
+const wrapText = (ctx, text, maxWidth) => {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (ctx.measureText(candidate).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+};
+
+const loadImage = (src) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => resolve(img);
+  img.onerror = () => reject(new Error('Görsel yüklenemedi'));
+  img.src = src;
+});
+
+/** Draws one slide's background + headline/body text onto a fresh canvas. */
+const composeSlide = async (slide) => {
+  await document.fonts.ready;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = CANVAS_W;
+  canvas.height = CANVAS_H;
+  const ctx = canvas.getContext('2d');
+
+  try {
+    const img = await loadImage(slide.imageUrl);
+    const scale = Math.max(CANVAS_W / img.width, CANVAS_H / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    ctx.drawImage(img, (CANVAS_W - w) / 2, (CANVAS_H - h) / 2, w, h);
+  } catch {
+    ctx.fillStyle = '#1c212c';
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  }
+
+  // Scrim so text stays legible over any background.
+  const gradient = ctx.createLinearGradient(0, CANVAS_H * 0.45, 0, CANVAS_H);
+  gradient.addColorStop(0, 'rgba(10,12,16,0)');
+  gradient.addColorStop(1, 'rgba(10,12,16,0.82)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, CANVAS_H * 0.45, CANVAS_W, CANVAS_H * 0.55);
+
+  const marginX = 72;
+  let y = CANVAS_H - 96;
+
+  if (slide.body) {
+    ctx.font = `500 34px ${CAROUSEL_FONT}`;
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    const bodyLines = wrapText(ctx, slide.body, CANVAS_W - marginX * 2).slice(0, 3);
+    for (let i = bodyLines.length - 1; i >= 0; i -= 1) {
+      ctx.fillText(bodyLines[i], marginX, y);
+      y -= 46;
+    }
+    y -= 12;
+  }
+
+  if (slide.headline) {
+    ctx.font = `800 62px ${CAROUSEL_FONT}`;
+    ctx.fillStyle = '#ffffff';
+    const headlineLines = wrapText(ctx, slide.headline, CANVAS_W - marginX * 2).slice(0, 3).reverse();
+    for (const l of headlineLines) {
+      ctx.fillText(l, marginX, y);
+      y -= 70;
+    }
+  }
+
+  // Slide index pill.
+  ctx.font = `700 26px ${CAROUSEL_FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText(`${slide.index}/6`, marginX, 92);
+
+  return canvas;
+};
+
+const downloadCanvas = (canvas, fileName) => new Promise((resolve) => {
+  canvas.toBlob((blob) => {
+    if (!blob) return resolve(false);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    resolve(true);
+  }, 'image/png');
+});
+
+const renderCarouselOutputs = async (job) => {
+  const { result } = job;
+  const slides = result.slides || [];
+  $('outputs-video').hidden = true;
+  $('outputs-carousel').hidden = slides.length === 0;
+  if (slides.length === 0) return;
+
+  $('carousel-count').textContent = `${slides.length} slayt`;
+  $('out-carousel-caption').textContent = result.caption || '';
+
+  const grid = $('carousel-grid');
+  grid.innerHTML = '';
+  renderedCanvases.clear();
+
+  for (const slide of slides) {
+    const card = document.createElement('div');
+    card.className = 'carousel-card';
+    card.innerHTML = `
+      <div class="carousel-canvas-wrap"><span class="muted">Slayt ${slide.index} hazırlanıyor…</span></div>
+      <button class="ghost carousel-download" type="button">İndir</button>
+    `;
+    grid.appendChild(card);
+
+    composeSlide(slide).then((canvas) => {
+      renderedCanvases.set(slide.index, canvas);
+      const wrap = card.querySelector('.carousel-canvas-wrap');
+      wrap.innerHTML = '';
+      wrap.appendChild(canvas);
+      card.querySelector('.carousel-download').addEventListener('click', () => {
+        downloadCanvas(canvas, `slayt-${slide.index}.png`);
+      });
+    });
+  }
+};
+
+$('carousel-download-all').addEventListener('click', async () => {
+  const entries = [...renderedCanvases.entries()].sort((a, b) => a[0] - b[0]);
+  for (const [index, canvas] of entries) {
+    // eslint-disable-next-line no-await-in-loop -- sequential on purpose: browsers block simultaneous downloads
+    await downloadCanvas(canvas, `slayt-${index}.png`);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+});
+
+// ---------- run view: dispatch ------------------------------------------------
+const renderOutputs = (job) => {
+  if (job.contentType === 'carousel') renderCarouselOutputs(job);
+  else renderVideoOutputs(job);
 };
 
 const renderJob = (job) => {
-  $('run-title').textContent = job.result.title || `Akış · ${job.imageKey}`;
+  $('run-title').textContent = job.result.title || `${CONTENT_TYPES[job.contentType]?.label || 'Akış'}`;
   const badge = $('run-status');
   badge.textContent = STATUS_LABELS[job.status] || job.status;
   badge.className = `badge ${job.status}`;
-  renderSteps(job);
+  renderSteps(job.steps);
   renderOutputs(job);
   renderLog(job);
 };
 
 const emptyRun = () => {
-  $('steps').innerHTML = ['Fikir & görsel toplama', 'NanoBanana ile görsel', 'Video senaryosu', 'VEO3 ile video', 'Tüm platformlara paylaşım']
+  const spec = CONTENT_TYPES[state.contentType];
+  $('run-title').textContent = 'Akış';
+  $('run-status').textContent = 'boşta';
+  $('run-status').className = 'badge';
+  $('outputs-video').hidden = true;
+  $('outputs-carousel').hidden = true;
+  $('log').innerHTML = '';
+  $('steps').innerHTML = spec.steps
     .map((title, index) => `<li class="step pending"><span class="step-index">${index + 1}</span><span class="step-title">${title}</span><span></span></li>`)
     .join('');
 };
@@ -210,12 +431,13 @@ const upsertJob = (job) => {
   if (state.activeJobId === job.id) renderJob(job);
 };
 
-// ---------- projects --------------------------------------------------------
-const STATUS_BADGES = {
-  processing: 'işleniyor',
-  ready: 'hazır',
-  published: 'yayınlandı',
-  error: 'hata',
+// ---------- projects ----------------------------------------------------------
+const STATUS_BADGES = { processing: 'işleniyor', ready: 'hazır', error: 'hata' };
+
+const projectThumb = (project) => {
+  if (project.imageUrl) return project.imageUrl;
+  if (project.slides?.[0]?.imageUrl) return project.slides[0].imageUrl;
+  return '';
 };
 
 const loadProjects = async () => {
@@ -224,21 +446,25 @@ const loadProjects = async () => {
   const body = $('projects').querySelector('tbody');
 
   if (projects.length === 0) {
-    body.innerHTML = '<tr><td colspan="5" class="muted">Henüz proje yok — ilk videonu üret.</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="muted">Henüz proje yok — ilk içeriğini üret.</td></tr>';
     return;
   }
 
   body.innerHTML = projects
-    .map((project) => `<tr>
-      <td>${project.imageUrl ? `<img class="row-thumb" src="${project.imageUrl}" alt="" loading="lazy" />` : '—'}</td>
+    .map((project) => {
+      const thumb = projectThumb(project);
+      return `<tr>
+      <td>${thumb ? `<img class="row-thumb" src="${thumb}" alt="" loading="lazy" />` : '—'}</td>
+      <td><span class="type-badge">${PROJECT_TYPE_LABELS[project.contentType] || project.contentType}</span></td>
       <td>${escapeHtml(project.title || '—')}</td>
       <td class="caption">${escapeHtml(project.caption || project.idea || '—')}</td>
       <td><span class="badge ${project.status}">${STATUS_BADGES[project.status] || project.status}</span></td>
       <td>
         ${project.videoUrl ? `<a href="${project.videoUrl}" target="_blank" rel="noopener">video</a> ` : ''}
-        <button class="link-button" data-delete="${project.imageKey}" title="Projeyi sil">sil</button>
+        <button class="link-button" data-delete="${encodeURIComponent(project.imageKey)}" title="Projeyi sil">sil</button>
       </td>
-    </tr>`)
+    </tr>`;
+    })
     .join('');
 
   for (const button of body.querySelectorAll('[data-delete]')) {
@@ -249,49 +475,23 @@ const loadProjects = async () => {
   }
 };
 
-// ---------- settings --------------------------------------------------------
+// ---------- settings -----------------------------------------------------------
 const renderSettingsForm = () => {
   $('set-model').value = state.settings.model;
   $('set-aspect').value = state.settings.aspectRatio;
-  $('settings-platforms').innerHTML = state.settings.platforms
-    .map((platform) => `<div class="settings-platform" data-platform="${platform.id}">
-      <header>
-        <strong>${platform.label}</strong>
-        <label class="muted"><input type="checkbox" data-field="enabled" ${platform.enabled ? 'checked' : ''} /> aktif</label>
-      </header>
-      <input type="text" data-field="accountId" placeholder="Blotato account id" value="${platform.accountId || ''}" />
-      ${platform.id === 'facebook' ? `<input type="text" data-field="pageId" placeholder="Facebook page id" value="${platform.pageId || ''}" />` : ''}
-      ${platform.id === 'pinterest' ? `<input type="text" data-field="boardId" placeholder="Pinterest board id" value="${platform.boardId || ''}" />` : ''}
-    </div>`)
-    .join('');
 };
 
 const saveSettings = async () => {
-  const platforms = [...$('settings-platforms').querySelectorAll('.settings-platform')].map((node) => {
-    const platform = { id: node.dataset.platform };
-    for (const input of node.querySelectorAll('[data-field]')) {
-      platform[input.dataset.field] = input.type === 'checkbox' ? input.checked : input.value.trim();
-    }
-    return platform;
-  });
-
   state.settings = await api('/api/settings', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: $('set-model').value.trim(), aspectRatio: $('set-aspect').value.trim(), platforms }),
+    body: JSON.stringify({ model: $('set-model').value.trim(), aspectRatio: $('set-aspect').value.trim() }),
   });
-
-  state.selected = new Set(state.settings.platforms.filter((platform) => platform.enabled).map((platform) => platform.id));
-  renderPlatformPicker();
+  $('model').value = state.settings.model;
+  $('aspect').value = state.settings.aspectRatio;
 };
 
-// ---------- misc ------------------------------------------------------------
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]
-  ));
-}
-
+// ---------- events (SSE) --------------------------------------------------------
 let events = null;
 
 const connectEvents = () => {
@@ -314,7 +514,7 @@ const connectEvents = () => {
   };
 };
 
-// ---------- membership ------------------------------------------------------
+// ---------- membership -----------------------------------------------------------
 let authMode = 'login';
 
 const showAuth = () => {
@@ -377,33 +577,41 @@ const wireAuth = () => {
   });
 };
 
-// ---------- boot ------------------------------------------------------------
+// ---------- boot -------------------------------------------------------------
+const wireContentTypePicker = () => {
+  for (const button of $('content-type-picker').querySelectorAll('.content-type')) {
+    button.addEventListener('click', () => {
+      clearImage();
+      applyContentType(button.dataset.type);
+    });
+  }
+};
+
 const enterApp = async () => {
   const status = await api('/api/status');
   state.user = status.user;
   state.settings = status.settings;
   state.providers = status.providers;
-  state.selected = new Set(status.settings.platforms.filter((platform) => platform.enabled).map((platform) => platform.id));
 
   $('account-name').textContent = status.user.name || status.user.email;
   renderMode(status.providers);
-  renderPlatformPicker();
   renderSettingsForm();
   renderProviderStatus(status.providers);
   $('model').value = status.settings.model;
   $('aspect').value = status.settings.aspectRatio;
 
   showApp();
-  emptyRun();
+  applyContentType(state.contentType);
   await loadProjects();
   connectEvents();
 };
 
 const init = async () => {
-  emptyRun();
   wireAuth();
   setAuthMode('login');
   wireDropzone();
+  wireContentTypePicker();
+  applyContentType('video');
 
   $('start').addEventListener('click', start);
   const openSettings = () => {

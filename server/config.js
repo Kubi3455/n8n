@@ -29,7 +29,6 @@ export const config = {
   // 3000 çok yaygın; başka bir uygulamayla çakışmaması için varsayılanı ayrı tutuyoruz.
   port: Number(process.env.PORT || 4321),
   // Public base URL, used to build image URLs that third party APIs must be able to fetch.
-  // In the n8n workflow this role was played by the public Google Drive folder.
   publicUrl: (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 4321}`).replace(/\/$/, ''),
 
   // When no provider key is configured the pipeline runs against built-in fakes,
@@ -46,18 +45,15 @@ export const config = {
 
   fal: {
     apiKey: process.env.FAL_API_KEY || '',
-    submitUrl: process.env.FAL_SUBMIT_URL || 'https://queue.fal.run/fal-ai/nano-banana/edit',
+    // Reference-image edit (NanoBanana) and plain text-to-image share the same account/key.
+    editUrl: process.env.FAL_EDIT_URL || 'https://queue.fal.run/fal-ai/nano-banana/edit',
+    generateUrl: process.env.FAL_GENERATE_URL || 'https://queue.fal.run/fal-ai/nano-banana',
   },
 
   kie: {
     apiKey: process.env.KIE_API_KEY || '',
     generateUrl: process.env.KIE_GENERATE_URL || 'https://api.kie.ai/api/v1/veo/generate',
     recordUrl: process.env.KIE_RECORD_URL || 'https://api.kie.ai/api/v1/veo/record-info',
-  },
-
-  blotato: {
-    apiKey: process.env.BLOTATO_API_KEY || '',
-    baseUrl: process.env.BLOTATO_BASE_URL || 'https://backend.blotato.com/v2',
   },
 
   polling: {
@@ -80,7 +76,6 @@ export const providerStatus = () => ({
   openai: Boolean(config.openai.apiKey),
   fal: Boolean(config.fal.apiKey),
   kie: Boolean(config.kie.apiKey),
-  blotato: Boolean(config.blotato.apiKey),
 });
 
 // A provider falls back to its mock implementation when MOCK_MODE is on or its key is missing.

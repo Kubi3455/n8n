@@ -32,27 +32,27 @@ Tarayıcı kendiliğinden açılır (açılmazsa terminaldeki adresi kopyala, ge
 http://localhost:4321 — port doluysa uygulama bir sonraki boş portu seçer ve onu yazar).
 
 1. **Kayıt ol** sekmesinden e-posta ve en az 8 karakterlik bir şifreyle hesap aç.
-2. Bir referans görsel yükle, video fikrini yaz, platformları seç.
-3. **Otomasyonu başlat** de; beş adım canlı olarak ilerler.
+2. Üstten içerik türünü seç: **Normal Video**, **UGC Reklam** ya da **Instagram Carousel**.
+3. Video türlerinde bir referans görsel yükle; carousel'de görsel isteğe bağlı, konuyu yazman yeterli.
+4. **İçerik oluştur** de; adımlar canlı olarak ilerler. Bitince video/görselleri veya carousel
+   slaytlarını indirebilirsin.
 
 API anahtarı girmediğin sürece tüm servisler sahte (mock) verilerle çalışır: hiçbir ücret
-oluşmaz, hiçbir yere gerçek paylaşım yapılmaz. Üst çubuktaki rozetler hangi servisin mock
-olduğunu gösterir.
+oluşmaz. Üst çubuktaki "Deneme modu" rozeti hangi servisin mock olduğunu gösterir, tıklayınca
+ayrıntıyı açar.
 
 ## 4. Anahtarları sonra ekle
 
 `.env.example` dosyasını `.env` adıyla kopyala ve elindeki anahtarları yaz:
 
 ```
-OPENAI_API_KEY=...     # görsel analizi, prompt ajanları, caption
-FAL_API_KEY=...        # NanoBanana görsel düzenleme
-KIE_API_KEY=...        # VEO3 video render
-BLOTATO_API_KEY=...    # sosyal medya paylaşımı
+OPENAI_API_KEY=...     # görsel analizi, prompt ajanları, carousel planı, paylaşım metni
+FAL_API_KEY=...        # NanoBanana görsel üretimi/düzenlemesi (üç içerik türü de kullanır)
+KIE_API_KEY=...        # VEO3 video render (yalnızca Normal Video ve UGC Reklam'da)
 ```
 
 Anahtarı girilen servis canlıya geçer, girilmeyen mock kalmaya devam eder — yani teker teker
-de ekleyebilirsin. Blotato hesap kimliklerini uygulama içindeki **Ayarlar** ekranından
-girersin. Değişiklikten sonra uygulamayı kapatıp yeniden başlat.
+de ekleyebilirsin. Değişiklikten sonra uygulamayı kapatıp yeniden başlat.
 
 ## Durdurma ve veriler
 
