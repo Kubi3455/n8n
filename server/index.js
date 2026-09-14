@@ -199,9 +199,17 @@ const openBrowser = (url) => {
 const providers = providerStatus();
 const missing = ['openai', 'fal', 'kie', 'blotato'].filter((key) => !providers[key]);
 console.log('');
-console.log(`  Viral Video Studio hazır:  ${config.publicUrl}`);
-console.log(`  ${missing.length ? `Mock mod: ${missing.join(', ')} (API anahtarı girilmedi)` : 'Tüm servisler canlı'}`);
-console.log('  Durdurmak için: Ctrl+C');
+console.log('  ===========================================');
+console.log('   VIRAL VIDEO STUDIO');
+console.log('  ===========================================');
+console.log('');
+console.log(`   Tarayicida ac:  ${config.publicUrl}`);
+console.log('');
+console.log(`   Klasor:  ${paths.root}`);
+console.log(`   ${missing.length ? `Mock mod: ${missing.join(', ')} (API anahtari girilmedi)` : 'Tum servisler canli'}`);
+console.log('');
+console.log('   Bu pencereyi kapatma - kapatirsan uygulama durur.');
+console.log('   Durdurmak icin: Ctrl+C');
 console.log('');
 
 openBrowser(config.publicUrl);

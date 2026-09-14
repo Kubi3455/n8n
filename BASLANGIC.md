@@ -29,7 +29,7 @@ Kurulum adımı **yok** — uygulamanın hiçbir dış paket bağımlılığı b
 ## 3. Kullan
 
 Tarayıcı kendiliğinden açılır (açılmazsa terminaldeki adresi kopyala, genelde
-http://localhost:3000 — port doluysa uygulama bir sonraki boş portu seçer ve onu yazar).
+http://localhost:4321 — port doluysa uygulama bir sonraki boş portu seçer ve onu yazar).
 
 1. **Kayıt ol** sekmesinden e-posta ve en az 8 karakterlik bir şifreyle hesap aç.
 2. Bir referans görsel yükle, video fikrini yaz, platformları seç.

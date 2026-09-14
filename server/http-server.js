@@ -134,7 +134,7 @@ export const createServer = ({ staticDirs = [], maxBodyBytes = 30 * 1024 * 1024 
   };
 };
 
-/** Picks the next free port, so a busy 3000 never blocks the first run. */
+/** Picks the next free port, so an already-used port never blocks the first run. */
 export const listenOnFreePort = (server, preferredPort, attempts = 20) =>
   new Promise((resolve, reject) => {
     let port = preferredPort;

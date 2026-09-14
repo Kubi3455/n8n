@@ -26,10 +26,11 @@ export const paths = {
 };
 
 export const config = {
-  port: Number(process.env.PORT || 3000),
+  // 3000 çok yaygın; başka bir uygulamayla çakışmaması için varsayılanı ayrı tutuyoruz.
+  port: Number(process.env.PORT || 4321),
   // Public base URL, used to build image URLs that third party APIs must be able to fetch.
   // In the n8n workflow this role was played by the public Google Drive folder.
-  publicUrl: (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, ''),
+  publicUrl: (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 4321}`).replace(/\/$/, ''),
 
   // When no provider key is configured the pipeline runs against built-in fakes,
   // so the whole flow is demoable end to end without spending credits.
