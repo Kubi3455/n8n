@@ -45,9 +45,12 @@ export const config = {
 
   fal: {
     apiKey: process.env.FAL_API_KEY || '',
-    // Reference-image edit (NanoBanana) and plain text-to-image share the same account/key.
+    // Reference-image edit (NanoBanana), plain text-to-image, and image/text-to-3D
+    // (Tripo3D) all share the same fal.ai account/key.
     editUrl: process.env.FAL_EDIT_URL || 'https://queue.fal.run/fal-ai/nano-banana/edit',
     generateUrl: process.env.FAL_GENERATE_URL || 'https://queue.fal.run/fal-ai/nano-banana',
+    threeDImageUrl: process.env.FAL_3D_IMAGE_URL || 'https://queue.fal.run/tripo3d/h3.1/image-to-3d',
+    threeDTextUrl: process.env.FAL_3D_TEXT_URL || 'https://queue.fal.run/tripo3d/h3.1/text-to-3d',
   },
 
   kie: {

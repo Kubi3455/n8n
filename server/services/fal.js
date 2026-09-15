@@ -22,13 +22,18 @@ const hash = (text) => {
 
 const escapeXml = (text) => text.replace(/[<>&]/g, (char) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[char]));
 
+/**
+ * fal.ai's queue API is the same submit -> status_url -> response_url shape for every model
+ * it hosts (image edit, text-to-image, image/text-to-3D). Returns the raw response payload;
+ * each caller below knows how to read its own model's result shape.
+ */
 const submitAndPoll = async ({ submitUrl, body, label, onProgress }) => {
   const headers = { Authorization: `Key ${config.fal.apiKey}`, 'Content-Type': 'application/json' };
 
   const submitted = await requestJson(submitUrl, { method: 'POST', headers, body: JSON.stringify(body) });
   const statusUrl = submitted.status_url;
   const responseUrl = submitted.response_url;
-  if (!statusUrl || !responseUrl) throw new Error('NanoBanana did not return queue URLs');
+  if (!statusUrl || !responseUrl) throw new Error(`${label} did not return queue URLs`);
   onProgress?.(`${label} kuyruğa alındı (${submitted.request_id})`);
 
   await pollUntil(
@@ -36,7 +41,7 @@ const submitAndPoll = async ({ submitUrl, body, label, onProgress }) => {
       const status = await requestJson(statusUrl, { headers });
       if (status.status === 'COMPLETED') return { done: true, value: status };
       if (status.status === 'FAILED' || status.error) {
-        return { failed: true, error: status.error || 'NanoBanana reported FAILED' };
+        return { failed: true, error: status.error || `${label} reported FAILED` };
       }
       return { done: false, status: status.status };
     },
@@ -48,10 +53,7 @@ const submitAndPoll = async ({ submitUrl, body, label, onProgress }) => {
     },
   );
 
-  const result = await requestJson(responseUrl, { headers });
-  const url = result?.images?.[0]?.url;
-  if (!url) throw new Error('NanoBanana returned no image');
-  return { url, raw: result };
+  return requestJson(responseUrl, { headers });
 };
 
 /**
@@ -65,12 +67,15 @@ export const editImage = async ({ prompt, imageUrl, displayUrl, onProgress }) =>
     return { url: displayUrl || imageUrl, mocked: true };
   }
 
-  return submitAndPoll({
+  const raw = await submitAndPoll({
     submitUrl: config.fal.editUrl,
     body: { prompt, image_urls: [imageUrl] },
     label: 'NanoBanana',
     onProgress,
   });
+  const url = raw?.images?.[0]?.url;
+  if (!url) throw new Error('NanoBanana returned no image');
+  return { url, raw };
 };
 
 /**
@@ -84,10 +89,34 @@ export const generateImage = async ({ prompt, label = 'Görsel', onProgress }) =
     return { url: placeholderImage(label), mocked: true };
   }
 
-  return submitAndPoll({
+  const raw = await submitAndPoll({
     submitUrl: config.fal.generateUrl,
     body: { prompt },
     label: 'NanoBanana',
     onProgress,
   });
+  const url = raw?.images?.[0]?.url;
+  if (!url) throw new Error('NanoBanana returned no image');
+  return { url, raw };
+};
+
+/**
+ * Image-to-3D or text-to-3D (Tripo3D via fal.ai) - used by the "3D Karakter" content type.
+ * Returns a downloadable .glb mesh plus a rendered preview image the model itself produces.
+ */
+export const generate3DModel = async ({ imageUrl, prompt, onProgress }) => {
+  if (useMock('fal')) {
+    onProgress?.('Mock Tripo3D: 3D model simüle ediliyor (gerçek .glb için API anahtarı gerekir)');
+    await sleep(1500);
+    return { modelUrl: '', previewUrl: placeholderImage('3D Önizleme'), mocked: true };
+  }
+
+  const raw = imageUrl
+    ? await submitAndPoll({ submitUrl: config.fal.threeDImageUrl, body: { image_url: imageUrl }, label: 'Tripo3D', onProgress })
+    : await submitAndPoll({ submitUrl: config.fal.threeDTextUrl, body: { prompt }, label: 'Tripo3D', onProgress });
+
+  const modelUrl = raw?.model_mesh?.url || raw?.model_urls?.glb?.url || raw?.pbr_model?.url;
+  const previewUrl = raw?.rendered_image?.url || '';
+  if (!modelUrl) throw new Error('Tripo3D bir model dosyası döndürmedi');
+  return { modelUrl, previewUrl, raw };
 };

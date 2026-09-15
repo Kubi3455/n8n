@@ -32,7 +32,8 @@ Tarayıcı kendiliğinden açılır (açılmazsa terminaldeki adresi kopyala, ge
 http://localhost:4321 — port doluysa uygulama bir sonraki boş portu seçer ve onu yazar).
 
 1. **Kayıt ol** sekmesinden e-posta ve en az 8 karakterlik bir şifreyle hesap aç.
-2. Üstten içerik türünü seç: **Normal Video**, **UGC Reklam** ya da **Instagram Carousel**.
+2. Üstten içerik türünü seç: **Normal Video**, **UGC Reklam**, **Instagram Carousel** ya da
+   **3D Karakter**.
 3. Video türlerinde bir referans görsel yükle; carousel'de görsel isteğe bağlı, konuyu yazman yeterli.
 4. **İçerik oluştur** de; adımlar canlı olarak ilerler. Bitince video/görselleri veya carousel
    slaytlarını indirebilirsin.
@@ -47,7 +48,7 @@ ayrıntıyı açar.
 
 ```
 OPENAI_API_KEY=...     # görsel analizi, prompt ajanları, carousel planı, paylaşım metni
-FAL_API_KEY=...        # NanoBanana görsel üretimi/düzenlemesi (üç içerik türü de kullanır)
+FAL_API_KEY=...        # NanoBanana görsel üretimi/düzenlemesi + 3D model üretimi (Tripo3D)
 KIE_API_KEY=...        # VEO3 video render (yalnızca Normal Video ve UGC Reklam'da)
 ```
 

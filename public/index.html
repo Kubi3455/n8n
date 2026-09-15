@@ -9,6 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap" />
   <link rel="stylesheet" href="styles.css" />
+  <!-- 3D Karakter önizlemesi için: sadece o çıktı türünde kullanılır, sayfanın geri kalanını etkilemez. -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 </head>
 <body>
   <header class="topbar" id="topbar" hidden>
@@ -75,6 +77,10 @@
         <button class="content-type" data-type="carousel" type="button" role="tab">
           <strong>Instagram Carousel</strong>
           <span>6 slaytlık kaydırmalı gönderi</span>
+        </button>
+        <button class="content-type" data-type="character3d" type="button" role="tab">
+          <strong>3D Karakter</strong>
+          <span>Görseli 3D'ye çevir ya da konu yaz</span>
         </button>
       </div>
 
@@ -171,6 +177,37 @@
         </details>
       </div>
 
+      <!-- 3D Karakter çıktısı -->
+      <div id="outputs-character3d" class="outputs" hidden>
+        <div class="character3d-card">
+          <div id="model-viewer-wrap" class="model-viewer-wrap">
+            <model-viewer id="model-viewer" camera-controls auto-rotate touch-action="pan-y" shadow-intensity="1" hidden></model-viewer>
+            <img id="character-preview" alt="3D karakter önizlemesi" hidden />
+            <p id="character-preview-empty" class="muted">Henüz üretilmedi</p>
+          </div>
+          <div class="character3d-actions">
+            <a id="model-download" class="primary character3d-download" download hidden>.glb dosyasını indir</a>
+            <p id="model-mock-note" class="muted" hidden>Deneme modunda gerçek 3D dosyası üretilmez — sadece önizleme gösterilir. API anahtarı eklenince buradan indirilebilir bir .glb dosyası gelir.</p>
+          </div>
+        </div>
+
+        <div class="output-text">
+          <details open>
+            <summary>Karakter &amp; paylaşım metni</summary>
+            <p id="out-character-title" class="mono"></p>
+            <p id="out-character-caption"></p>
+          </details>
+          <details>
+            <summary>Görsel analizi</summary>
+            <pre id="out-character-description"></pre>
+          </details>
+          <details>
+            <summary>3D prompt'u</summary>
+            <pre id="out-character-prompt"></pre>
+          </details>
+        </div>
+      </div>
+
       <details class="logs" open>
         <summary>Canlı log</summary>
         <div id="log" class="log"></div>
@@ -204,7 +241,7 @@
         <div id="provider-status" class="provider-status"></div>
       </div>
 
-      <p class="muted">Video içerikleri için varsayılanlar (Normal Video ve UGC Reklam'da kullanılır).</p>
+      <p class="muted">Video içerikleri için varsayılanlar (Normal Video ve UGC Reklam'da kullanılır). Carousel ve 3D Karakter bu ayarları kullanmaz.</p>
       <div class="field-row">
         <label class="field">
           <span>Varsayılan model</span>

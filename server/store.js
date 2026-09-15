@@ -15,7 +15,11 @@ export const CONTENT_TYPES = {
   video: 'video', // Normal Video - general purpose
   ugc: 'ugc', // UGC Reklam Videosu
   carousel: 'carousel', // Instagram Carousel
+  character3d: 'character3d', // 3D Karakter
 };
+
+// Content types where an uploaded image is optional (a topic alone is enough).
+export const OPTIONAL_IMAGE_TYPES = new Set(['carousel', 'character3d']);
 
 export const DEFAULT_SETTINGS = {
   model: 'veo3_fast',
@@ -74,6 +78,8 @@ export const upsertProject = async (userId, imageKey, values) => {
       finalPrompt: '',
       videoUrl: '',
       slides: [], // carousel only: [{ index, imageUrl, headline, body }]
+      modelUrl: '', // character3d only: downloadable .glb mesh
+      previewImageUrl: '', // character3d only: rendered turntable preview
       status: PROJECT_STATUS.processing,
       createdAt: now,
       updatedAt: now,

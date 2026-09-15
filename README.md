@@ -1,7 +1,7 @@
 # Viral Video Studio
 
 An AI content studio, originally sketched out from the n8n workflow **"Generate AI viral videos with
-NanoBanana & VEO3"**. Members sign up, then generate one of three content types from a topic and an
+NanoBanana & VEO3"**. Members sign up, then generate one of four content types from a topic and an
 optional reference image, with live per-stage progress. There is no auto-posting to social
 platforms — every project hands you back a finished asset and a ready-to-copy caption instead.
 
@@ -14,6 +14,9 @@ platforms — every project hands you back a finished asset and a ready-to-copy 
 3. **Instagram Carousel** — a topic becomes a 6-slide swipeable carousel plan (hook → 4 points → CTA),
    an image is generated per slide, and the browser composites the headline/body text onto each
    image with `<canvas>` so every slide downloads as a finished PNG.
+4. **3D Karakter** — for character designers: upload a character image to lift it straight into 3D,
+   or describe one from scratch. Either way you get a rotatable, downloadable `.glb` mesh (Tripo3D via
+   fal.ai) plus a rendered preview, viewable in-browser via `<model-viewer>`.
 
 ## Pipeline (video content types)
 
@@ -36,6 +39,22 @@ platforms — every project hands you back a finished asset and a ready-to-copy 
    Slide text is composited **in the browser**, not on the server — this keeps the server dependency-
    free and guarantees correct Turkish text rendering. Each slide downloads as a finished PNG.
 
+## Pipeline (3D Karakter)
+
+1. **Konu ve görsel toplama** — the member describes the character and optionally uploads a reference.
+2. **3D karakter prompt'u** — if a reference was given, OpenAI Vision describes it first; either way,
+   an agent writes one prompt suited for 3D generation (art style, pose, "single centered subject,
+   plain background" for clean reconstruction).
+3. **3D model üretimi** — with a reference image, Tripo3D's image-to-3D endpoint lifts it directly
+   (no NanoBanana re-edit first — the original art goes in untouched); without one, Tripo3D's
+   text-to-3D endpoint generates from the prompt alone. Returns a `.glb` mesh and a rendered preview
+   image, both re-hosted under `/uploads/`.
+4. **Paylaşım metni** — a caption for the reveal post.
+
+In mock mode this content type can only show the placeholder preview image — a real `.glb` file
+needs a live `FAL_API_KEY`, so the "İndir" button and the `<model-viewer>` stay hidden until then and
+a note explains why.
+
 ## Running it
 
 Türkçe adım adım kılavuz: **[BASLANGIC.md](BASLANGIC.md)**.
@@ -57,10 +76,14 @@ dialog behind it) shows which providers are live and which are mocked. Add keys 
 ### Going live
 
 1. `OPENAI_API_KEY` — image analysis, prompt agents, carousel planning, captions.
-2. `FAL_API_KEY` — NanoBanana image edit and text-to-image.
+2. `FAL_API_KEY` — NanoBanana image edit/text-to-image, and Tripo3D image/text-to-3D (same key,
+   same fal.ai account).
 3. `KIE_API_KEY` — VEO3 render (only needed for the two video modes).
 4. `PUBLIC_URL` — only needed when the renderers must fetch images over the network; on localhost
    the image is sent inline instead.
+
+`FAL_3D_IMAGE_URL` / `FAL_3D_TEXT_URL` let you swap the Tripo3D model variant (e.g. the lower-poly
+`p1` family) without touching code — see `.env.example`.
 
 ## API
 
@@ -88,12 +111,13 @@ server/
   http-server.js  tiny router over node:http (so the app needs no framework)
   env.js          .env reader
   auth.js         registration, login, scrypt hashing, session cookies
-  pipeline.js     runVideoPipeline (Normal Video / UGC) + runCarouselPipeline
+  pipeline.js     runVideoPipeline (Normal Video / UGC) + runCarouselPipeline + runCharacterPipeline
   jobs.js         job registry + event bus, step lists per content type
   store.js        projects and per-member settings
-  prompts.js      prompts for all three content types
-  services/       openai, fal (NanoBanana), kie (VEO3), media (re-hosts provider images)
-public/           single-page UI (no build step) - content-type switcher, canvas compositing
+  prompts.js      prompts for all four content types
+  services/       openai, fal (NanoBanana + Tripo3D), kie (VEO3), media (re-hosts provider files)
+public/           single-page UI (no build step) - content-type switcher, canvas compositing,
+                  <model-viewer> for the 3D preview
 ```
 
 ## Security notes

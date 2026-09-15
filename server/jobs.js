@@ -32,6 +32,12 @@ const STEP_DEFINITIONS_BY_TYPE = {
     { id: 'slides', title: '6 slayt görseli' },
     { id: 'caption', title: 'Paylaşım metni' },
   ],
+  character3d: [
+    { id: 'collect', title: 'Konu ve görsel toplama' },
+    { id: 'prompt', title: '3D karakter prompt\'u' },
+    { id: 'model', title: '3D model üretimi' },
+    { id: 'caption', title: 'Paylaşım metni' },
+  ],
 };
 
 export const getStepDefinitions = (contentType) => STEP_DEFINITIONS_BY_TYPE[contentType] || STEP_DEFINITIONS_BY_TYPE.ugc;

@@ -285,11 +285,51 @@ ${imageDescription ? `Reference image analysis (keep the visual thread consisten
 Produce the 6-slide carousel plan now, following the system rules exactly.`;
 
 // ============================================================================
+// 3D Karakter - a topic (and/or a reference image) becomes one prompt suited for
+// image-to-3D / text-to-3D character generation (Tripo3D via fal.ai).
+// ============================================================================
+
+export const CHARACTER_PROMPT_SYSTEM = `ROLE: 3D Character Concept Prompt Builder
+
+GOAL:
+Turn a topic (and, if given, a reference image analysis) into one prompt suited for
+image-to-3D or text-to-3D character generation. Output ONE JSON object only:
+{ "title": "...", "prompt": "..." }
+
+RULES:
+- \`title\`: short label for this character, in TURKISH, max 8 words.
+- \`prompt\`: ENGLISH, <=80 words. Must cover:
+  - subject: what the character is
+  - art style: pick whichever fits the idea (stylized, anime, realistic, low-poly, toon) -
+    don't default to one look
+  - pose: prefer a neutral standing pose (T-pose or relaxed A-pose) - this reconstructs and
+    rigs far better than a dynamic action pose
+  - materials/colors, and a closing clause requesting "single centered subject, plain
+    neutral background, full body visible, no other objects" - clean isolation is essential
+    for accurate 3D reconstruction.
+- If a reference image was analyzed, stay faithful to its colors/design; do not invent new
+  features that weren't described.
+- Exactly one subject. Never describe a scene, a group, or multiple characters.
+
+OUTPUT CONTRACT: JSON only - no markdown, no commentary.`;
+
+export const characterPromptUser = ({ idea, imageDescription }) => `Topic / idea:
+${idea || '(none provided)'}
+
+${imageDescription ? `Reference image analysis (stay faithful to this):\n${imageDescription}` : 'No reference image was provided - design a fitting character from the topic alone.'}
+
+Produce the { title, prompt } object now, following the system rules exactly.`;
+
+// ============================================================================
 // Shared final step: a ready-to-copy caption for whatever was produced.
 // ============================================================================
 
 export const socialCaptionUser = ({ idea, title, contentType }) => {
-  const kind = contentType === 'carousel' ? 'Instagram carousel post' : 'short vertical video';
+  const kind = contentType === 'carousel'
+    ? 'Instagram carousel post'
+    : contentType === 'character3d'
+      ? '3D character model reveal post'
+      : 'short vertical video';
   return `You are writing a ready-to-post social media caption for a ${kind} - not inventing a new concept, just captioning the one already made.
 ---
 ### CONTEXT:

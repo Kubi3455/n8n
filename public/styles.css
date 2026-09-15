@@ -82,7 +82,7 @@ p { margin: 0; }
 .run { display: flex; flex-direction: column; gap: 16px; }
 .library { grid-column: 1 / -1; }
 
-.content-type-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.content-type-picker { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .content-type {
   display: grid; gap: 3px; text-align: left;
   padding: 10px 11px; border-radius: 10px; cursor: pointer;
@@ -185,6 +185,19 @@ details {
 summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 details > *:not(summary) { margin-top: 8px; }
 pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text); max-height: 260px; overflow: auto; }
+
+.character3d-card {
+  display: grid; gap: 12px;
+  padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2);
+}
+.model-viewer-wrap {
+  aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden;
+  background: #14161c; display: grid; place-items: center;
+}
+.model-viewer-wrap model-viewer { width: 100%; height: 100%; --poster-color: transparent; }
+.model-viewer-wrap img { width: 100%; height: 100%; object-fit: contain; }
+.character3d-actions { display: grid; gap: 8px; }
+.character3d-download { text-align: center; text-decoration: none; }
 
 .carousel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .carousel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }

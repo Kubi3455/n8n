@@ -31,9 +31,19 @@ const CONTENT_TYPES = {
     videoOptions: false,
     steps: ['Konu toplama', 'Carousel içerik planı', '6 slayt görseli', 'Paylaşım metni'],
   },
+  character3d: {
+    label: '3D Karakter',
+    ideaLabel: 'Karakter konusu',
+    ideaPlaceholder: 'Örn: Zırhlı bir gezgin karakteri, sıcak tonlarda',
+    dropzoneTitle: 'İsteğe bağlı: karakter görseli',
+    dropzoneHint: 'Görsel verirsen doğrudan 3D\'ye çevrilir · vermezsen konudan üretilir',
+    imageRequired: false,
+    videoOptions: false,
+    steps: ['Konu ve görsel toplama', '3D karakter prompt\'u', '3D model üretimi', 'Paylaşım metni'],
+  },
 };
 
-const PROJECT_TYPE_LABELS = { video: 'Normal Video', ugc: 'UGC Reklam', carousel: 'Carousel' };
+const PROJECT_TYPE_LABELS = { video: 'Normal Video', ugc: 'UGC Reklam', carousel: 'Carousel', character3d: '3D Karakter' };
 
 const state = {
   user: null,
@@ -227,6 +237,7 @@ const renderVideoOutputs = (job) => {
   const hasAnything = result.imageDescription || result.editedImageUrl || result.videoUrl;
   $('outputs-video').hidden = !hasAnything;
   $('outputs-carousel').hidden = true;
+  $('outputs-character3d').hidden = true;
   if (!hasAnything) return;
 
   const image = $('out-image');
@@ -356,6 +367,7 @@ const renderCarouselOutputs = async (job) => {
   const slides = result.slides || [];
   $('outputs-video').hidden = true;
   $('outputs-carousel').hidden = slides.length === 0;
+  $('outputs-character3d').hidden = true;
   if (slides.length === 0) return;
 
   $('carousel-count').textContent = `${slides.length} slayt`;
@@ -396,9 +408,54 @@ $('carousel-download-all').addEventListener('click', async () => {
   }
 });
 
+// ---------- run view: 3D character outputs ------------------------------------
+const renderCharacterOutputs = (job) => {
+  const { result } = job;
+  const hasAnything = result.title || result.previewImageUrl || result.modelUrl;
+  $('outputs-video').hidden = true;
+  $('outputs-carousel').hidden = true;
+  $('outputs-character3d').hidden = !hasAnything;
+  if (!hasAnything) return;
+
+  const viewer = $('model-viewer');
+  const previewImg = $('character-preview');
+  const previewEmpty = $('character-preview-empty');
+  const downloadLink = $('model-download');
+  const mockNote = $('model-mock-note');
+
+  if (result.modelUrl) {
+    if (viewer.getAttribute('src') !== result.modelUrl) viewer.setAttribute('src', result.modelUrl);
+    viewer.hidden = false;
+    previewImg.hidden = true;
+    previewEmpty.hidden = true;
+    downloadLink.href = result.modelUrl;
+    downloadLink.hidden = false;
+    mockNote.hidden = true;
+  } else if (result.previewImageUrl) {
+    viewer.hidden = true;
+    previewImg.src = result.previewImageUrl;
+    previewImg.hidden = false;
+    previewEmpty.hidden = true;
+    downloadLink.hidden = true;
+    mockNote.hidden = false;
+  } else {
+    viewer.hidden = true;
+    previewImg.hidden = true;
+    previewEmpty.hidden = false;
+    downloadLink.hidden = true;
+    mockNote.hidden = true;
+  }
+
+  $('out-character-title').textContent = result.title || '';
+  $('out-character-caption').textContent = result.caption || '';
+  $('out-character-description').textContent = result.imageDescription || '';
+  $('out-character-prompt').textContent = result.imagePrompt || '';
+};
+
 // ---------- run view: dispatch ------------------------------------------------
 const renderOutputs = (job) => {
   if (job.contentType === 'carousel') renderCarouselOutputs(job);
+  else if (job.contentType === 'character3d') renderCharacterOutputs(job);
   else renderVideoOutputs(job);
 };
 
@@ -419,6 +476,7 @@ const emptyRun = () => {
   $('run-status').className = 'badge';
   $('outputs-video').hidden = true;
   $('outputs-carousel').hidden = true;
+  $('outputs-character3d').hidden = true;
   $('log').innerHTML = '';
   $('steps').innerHTML = spec.steps
     .map((title, index) => `<li class="step pending"><span class="step-index">${index + 1}</span><span class="step-title">${title}</span><span></span></li>`)
@@ -437,6 +495,7 @@ const STATUS_BADGES = { processing: 'işleniyor', ready: 'hazır', error: 'hata'
 const projectThumb = (project) => {
   if (project.imageUrl) return project.imageUrl;
   if (project.slides?.[0]?.imageUrl) return project.slides[0].imageUrl;
+  if (project.previewImageUrl) return project.previewImageUrl;
   return '';
 };
 
@@ -461,6 +520,7 @@ const loadProjects = async () => {
       <td><span class="badge ${project.status}">${STATUS_BADGES[project.status] || project.status}</span></td>
       <td>
         ${project.videoUrl ? `<a href="${project.videoUrl}" target="_blank" rel="noopener">video</a> ` : ''}
+        ${project.modelUrl ? `<a href="${project.modelUrl}" download>.glb</a> ` : ''}
         <button class="link-button" data-delete="${encodeURIComponent(project.imageKey)}" title="Projeyi sil">sil</button>
       </td>
     </tr>`;

@@ -1,7 +1,7 @@
 import { log, setResult, setStatus, setStep } from './jobs.js';
 import * as fal from './services/fal.js';
 import * as kie from './services/kie.js';
-import { hostImage } from './services/media.js';
+import { hostFile } from './services/media.js';
 import * as openai from './services/openai.js';
 import { PROJECT_STATUS, getSettings, upsertProject } from './store.js';
 
@@ -63,7 +63,7 @@ const runVideoPipeline = async (job, { filePath, publicUrl }, style) => {
       displayUrl: publicUrl,
       onProgress: (message) => log(job, message),
     });
-    const editedImageUrl = await hostImage({ url: edited.url, prefix: `${userId}-${imageKey}-image` });
+    const editedImageUrl = await hostFile({ url: edited.url, prefix: `${userId}-${imageKey}-image` });
     setResult(job, { editedImageUrl });
     setStep(job, 'image', 'done', edited.mocked ? 'Mock düzenleme (referans görsel kullanıldı)' : 'Görsel hazır');
 
@@ -156,7 +156,7 @@ const runCarouselPipeline = async (job, { filePath, publicUrl }) => {
               onProgress: (message) => log(job, `${label}: ${message}`),
             });
 
-        const imageUrl = await hostImage({ url: generated.url, prefix: `${userId}-${imageKey}-slide-${index}` });
+        const imageUrl = await hostFile({ url: generated.url, prefix: `${userId}-${imageKey}-slide-${index}` });
         done += 1;
         setStep(job, 'slides', 'running', `${done}/${plan.length} görsel hazır`);
 
@@ -188,8 +188,82 @@ const runCarouselPipeline = async (job, { filePath, publicUrl }) => {
   }
 };
 
+/**
+ * Topic and/or reference image in, a downloadable 3D character (.glb) out - for people who
+ * design characters and want a rotatable model, not a flat image or a video.
+ */
+const runCharacterPipeline = async (job, { filePath, publicUrl }) => {
+  const userId = job.userId;
+  const imageKey = job.imageKey;
+  const idea = job.input.idea;
+
+  setStatus(job, 'running');
+
+  try {
+    setStep(job, 'collect', 'running');
+    await upsertProject(userId, imageKey, {
+      contentType: 'character3d',
+      imageUrl: publicUrl || '',
+      idea,
+      status: PROJECT_STATUS.processing,
+    });
+    setResult(job, { imageUrl: publicUrl || '' });
+    log(job, 'Konu ve görsel kaydedildi');
+    setStep(job, 'collect', 'done', 'Kaydedildi');
+
+    let imageDescription = '';
+    if (filePath) {
+      setStep(job, 'prompt', 'running', 'Referans görsel analiz ediliyor');
+      imageDescription = await openai.analyzeImage({ filePath, imageUrl: publicUrl });
+      await upsertProject(userId, imageKey, { imageDescription });
+      setResult(job, { imageDescription });
+      log(job, 'Referans görsel analiz edildi');
+    }
+
+    setStep(job, 'prompt', 'running', '3D karakter prompt\'u hazırlanıyor');
+    const { title, prompt } = await openai.generateCharacterPrompt({ idea, imageDescription });
+    await upsertProject(userId, imageKey, { title, imagePrompt: prompt });
+    setResult(job, { title, imagePrompt: prompt });
+    log(job, `Karakter: ${title}`);
+    setStep(job, 'prompt', 'done', title);
+
+    // A reference image goes straight to image-to-3D (no NanoBanana re-edit first - we want
+    // the original character art, not a re-styled version of it) unmodified; without one,
+    // Tripo3D's text-to-3D endpoint generates directly from the prompt.
+    setStep(job, 'model', 'running', 'Tripo3D ile model üretiliyor');
+    const remoteImageUrl = await resolveRemoteImageUrl({ publicUrl, filePath });
+    const model = await fal.generate3DModel({
+      imageUrl: remoteImageUrl,
+      prompt,
+      onProgress: (message) => log(job, message),
+    });
+    const modelUrl = await hostFile({ url: model.modelUrl, prefix: `${userId}-${imageKey}-model` });
+    const previewImageUrl = await hostFile({ url: model.previewUrl, prefix: `${userId}-${imageKey}-preview` });
+    await upsertProject(userId, imageKey, { modelUrl, previewImageUrl, status: PROJECT_STATUS.ready });
+    setResult(job, { modelUrl, previewImageUrl });
+    setStep(job, 'model', 'done', model.mocked ? 'Mock önizleme (gerçek .glb için API anahtarı gerekir)' : 'Model hazır');
+
+    setStep(job, 'caption', 'running');
+    const caption = await openai.writeSocialCaption({ idea, title, contentType: 'character3d' });
+    await upsertProject(userId, imageKey, { caption });
+    setResult(job, { caption });
+    log(job, `Paylaşım metni hazır (${caption.length} karakter)`);
+    setStep(job, 'caption', 'done');
+
+    setStatus(job, 'completed');
+    log(job, 'Akış tamamlandı');
+  } catch (error) {
+    const failing = job.steps.find((step) => step.status === 'running');
+    if (failing) setStep(job, failing.id, 'failed', error.message);
+    await upsertProject(userId, imageKey, { status: PROJECT_STATUS.error }).catch(() => {});
+    setStatus(job, 'failed', error.message);
+    log(job, error.message, 'error');
+  }
+};
+
 /** Single entry point: dispatches on job.contentType so index.js doesn't need to know the details. */
 export const runPipeline = async (job, upload) => {
   if (job.contentType === 'carousel') return runCarouselPipeline(job, upload);
+  if (job.contentType === 'character3d') return runCharacterPipeline(job, upload);
   return runVideoPipeline(job, upload, job.contentType === 'video' ? 'general' : 'ugc');
 };

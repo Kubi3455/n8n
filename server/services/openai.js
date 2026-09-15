@@ -3,11 +3,13 @@ import path from 'node:path';
 import { config, useMock } from '../config.js';
 import {
   CAROUSEL_PLAN_SYSTEM,
+  CHARACTER_PROMPT_SYSTEM,
   GENERAL_IMAGE_PROMPT_SYSTEM,
   MASTER_PROMPT_SCHEMA,
   UGC_IMAGE_PROMPT_SYSTEM,
   VISION_PROMPT,
   carouselPlanUser,
+  characterPromptUser,
   generalImagePromptUser,
   generalVideoScriptUser,
   socialCaptionUser,
@@ -229,6 +231,33 @@ export const generateCarouselPlan = async ({ idea, imageDescription }) => {
   const slides = parsed.slides.slice(0, 6);
   while (slides.length < 6) slides.push({ headline: '', body: '', image_prompt: idea || 'a clean minimal scene' });
   return { slides };
+};
+
+/** New: turns an idea (and optional reference image) into a 3D character generation prompt. */
+export const generateCharacterPrompt = async ({ idea, imageDescription }) => {
+  if (useMock('openai')) {
+    await sleep(600);
+    return {
+      title: 'Zırhlı Gezgin Karakteri',
+      prompt:
+        'a stylized armored traveler character, weathered leather and metal plate details, warm bronze and teal color '
+        + 'palette, relaxed A-pose facing forward, arms slightly away from body; single centered subject, plain neutral '
+        + 'background, full body visible, no other objects',
+    };
+  }
+
+  const raw = await chat({
+    model: config.openai.agentModel,
+    jsonMode: true,
+    messages: [
+      { role: 'system', content: CHARACTER_PROMPT_SYSTEM },
+      { role: 'user', content: characterPromptUser({ idea, imageDescription }) },
+    ],
+  });
+
+  const parsed = parseJsonOutput(raw);
+  if (!parsed.title || !parsed.prompt) throw new Error('Character prompt agent returned no "title"/"prompt" keys');
+  return parsed;
 };
 
 /** Final step for every content type: a ready-to-copy caption, always under 200 characters. */

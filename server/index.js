@@ -7,7 +7,7 @@ import { config, paths, providerStatus, setPublicUrl } from './config.js';
 import { createServer, listenOnFreePort } from './http-server.js';
 import { bus, createJob, getJob, listJobs, restoreJobs } from './jobs.js';
 import { runPipeline } from './pipeline.js';
-import { CONTENT_TYPES, deleteProject, getSettings, listProjects, saveSettings } from './store.js';
+import { CONTENT_TYPES, OPTIONAL_IMAGE_TYPES, deleteProject, getSettings, listProjects, saveSettings } from './store.js';
 
 const app = createServer({
   staticDirs: [
@@ -134,7 +134,7 @@ app.post('/api/jobs', async (req, res) => {
     const { image, idea = '', model, aspectRatio, contentType } = req.body;
     const type = CONTENT_TYPES[contentType] || CONTENT_TYPES.ugc;
 
-    if (type !== 'carousel' && !image) return res.json(400, { error: 'Bir görsel yükleyin' });
+    if (!OPTIONAL_IMAGE_TYPES.has(type) && !image) return res.json(400, { error: 'Bir görsel yükleyin' });
     if (!String(idea).trim() && !image) return res.json(400, { error: 'Bir konu ya da fikir yazın' });
 
     const settings = await getSettings(req.user.id);
