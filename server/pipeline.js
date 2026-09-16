@@ -39,7 +39,10 @@ const runVideoPipeline = async (job, { filePath, publicUrl }, style) => {
   const imageKey = job.imageKey;
   const idea = job.input.idea;
   const model = job.input.model || settings.model;
-  const aspectRatio = job.input.aspectRatio || settings.aspectRatio;
+  // Çoklu Format Export: one or more aspect ratios, each rendered as its own VEO3 call per
+  // variant. Falls back to the single legacy aspectRatio field for jobs created before this
+  // existed (or by an API/webhook caller that only ever sends `aspectRatio`).
+  const formats = job.input.formats?.length ? job.input.formats : [job.input.aspectRatio || settings.aspectRatio];
   const brandKit = job.input.brandKit || null;
 
   setStatus(job, 'running');
@@ -95,16 +98,30 @@ const runVideoPipeline = async (job, { filePath, publicUrl }, style) => {
         log(job, `[${label}] Senaryo başlığı: ${script.title}`);
         setVariantStep(job, variant.id, 'script', 'done', script.title);
 
-        setVariantStep(job, variant.id, 'video', 'running', `${model} ile render ediliyor (${aspectRatio})`);
-        const video = await kie.generateVideo({
-          prompt: formattedPrompt,
-          model,
-          aspectRatio,
-          imageUrl: editedImageUrl,
-          onProgress: (message) => log(job, `[${label}] ${message}`),
-        });
-        setVariantResult(job, variant.id, { videoUrl: video.url });
-        setVariantStep(job, variant.id, 'video', 'done', video.mocked ? 'Mock render (örnek klip)' : 'Video hazır');
+        // Çoklu Format Export: one VEO3 render per requested aspect ratio, in parallel; a
+        // single-format job (the common case) behaves exactly as before.
+        setVariantStep(
+          job, variant.id, 'video', 'running',
+          formats.length > 1 ? `${model} ile ${formats.length} format render ediliyor (${formats.join(', ')})` : `${model} ile render ediliyor (${formats[0]})`,
+        );
+        let renderedCount = 0;
+        const videos = await Promise.all(formats.map(async (format) => {
+          const video = await kie.generateVideo({
+            prompt: formattedPrompt,
+            model,
+            aspectRatio: format,
+            imageUrl: editedImageUrl,
+            onProgress: (message) => log(job, `[${label}] [${format}] ${message}`),
+          });
+          renderedCount += 1;
+          if (formats.length > 1) setVariantStep(job, variant.id, 'video', 'running', `${renderedCount}/${formats.length} format hazır`);
+          return { format, url: video.url, mocked: video.mocked };
+        }));
+        setVariantResult(job, variant.id, { videoUrl: videos[0]?.url, videoUrls: videos });
+        setVariantStep(
+          job, variant.id, 'video', 'done',
+          videos.length > 1 ? `${videos.length} format hazır` : (videos[0]?.mocked ? 'Mock render (örnek klip)' : 'Video hazır'),
+        );
 
         setVariantStep(job, variant.id, 'caption', 'running');
         const caption = await openai.writeSocialCaption({ idea, title: script.title, contentType: job.contentType, angle: variant.angle });

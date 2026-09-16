@@ -188,15 +188,17 @@ app.get('/api/jobs/:id', (req, res) => {
   res.json(200, job);
 });
 
-// Only Normal Video and UGC Reklam support hook/angle variants today.
+// Only Normal Video and UGC Reklam support hook/angle variants and multi-format export today.
 const VARIANT_CONTENT_TYPES = new Set(['video', 'ugc']);
 const MAX_VARIANTS = HOOK_ANGLE_ORDER.length; // 5 - one per defined angle
+const SUPPORTED_FORMATS = ['16:9', '9:16', '1:1'];
+const MAX_FORMATS = SUPPORTED_FORMATS.length;
 
 app.post('/api/jobs', async (req, res) => {
   if (!requireAuth(req, res)) return;
   let reservation = { allowed: true, usedFreeCredit: false, count: 0 };
   try {
-    const { image, idea = '', model, aspectRatio, contentType, variantCount, useBrandKit } = req.body;
+    const { image, idea = '', model, aspectRatio, contentType, variantCount, useBrandKit, formats } = req.body;
     const type = CONTENT_TYPES[contentType] || CONTENT_TYPES.ugc;
 
     if (!OPTIONAL_IMAGE_TYPES.has(type) && !image) return res.json(400, { error: 'Bir görsel yükleyin' });
@@ -216,10 +218,20 @@ app.post('/api/jobs', async (req, res) => {
 
     const settings = await getSettings(req.user.id);
 
+    // Çoklu Format Export: each requested format is its own VEO3 render per variant, so - just
+    // like extra hook variants - it multiplies real-provider cost directly. A bad/missing list
+    // falls back to the single legacy aspectRatio field, so older API/webhook callers (Feature 5)
+    // that only ever knew about `aspectRatio` keep working unchanged.
+    const requestedFormatList = isVariantType && Array.isArray(formats)
+      ? [...new Set(formats.filter((value) => SUPPORTED_FORMATS.includes(value)))].slice(0, MAX_FORMATS)
+      : [];
+    const resolvedFormats = requestedFormatList.length > 0 ? requestedFormatList : [aspectRatio || settings.aspectRatio];
+    const requestedFormats = resolvedFormats.length;
+
     // Credit gate: reserve before any upload/pipeline work starts, so a request that will
     // be refused never touches disk or spends anything. Mock-mode runs never reach here
     // as anything but free (isFullyMocked short-circuits reserve() to always allow).
-    reservation = await credits.reserve({ userId: req.user.id, isFullyMocked: isFullyMocked(), count: requestedVariants });
+    reservation = await credits.reserve({ userId: req.user.id, isFullyMocked: isFullyMocked(), count: requestedVariants * requestedFormats });
     if (!reservation.allowed) {
       const detail = reservation.needed > 1
         ? ` Bu istek ${reservation.needed} kredi gerektiriyor, ${reservation.remaining} krediniz kaldı.`
@@ -268,11 +280,13 @@ app.post('/api/jobs', async (req, res) => {
         idea: String(idea).slice(0, 2000),
         model: effectiveModel,
         aspectRatio: aspectRatio || settings.aspectRatio,
+        formats: resolvedFormats,
         brandKit: appliedBrandKit,
       },
     });
     if (downgraded) log(job, `Ücretsiz kredi: "${requestedModel}" yerine "${effectiveModel}" kullanılıyor`, 'warn');
     if (requestedVariants > 1) log(job, `${requestedVariants} hook varyantı üretilecek: ${variantSpecs.map((v) => v.angleLabel).join(', ')}`);
+    if (requestedFormats > 1) log(job, `${requestedFormats} format render edilecek: ${resolvedFormats.join(', ')}`);
     if (appliedBrandKit) log(job, 'Marka kiti bu üretime uygulandı');
 
     // Fire and forget: progress reaches the browser over SSE. Any variant that didn't finish
@@ -286,8 +300,10 @@ app.post('/api/jobs', async (req, res) => {
       })
       .then(() => {
         if (!reservation.usedFreeCredit) return undefined;
+        // Each unfinished variant is worth `requestedFormats` credits, not one - a variant
+        // reserved one credit per format it was going to render.
         const unearned = job.variants.length > 0
-          ? job.variants.filter((variant) => variant.status !== 'done').length
+          ? job.variants.filter((variant) => variant.status !== 'done').length * requestedFormats
           : (job.status === 'failed' ? reservation.count : 0);
         if (unearned > 0) return credits.refund(req.user.id, 'pipeline failed', unearned);
         return undefined;

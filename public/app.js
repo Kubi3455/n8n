@@ -149,6 +149,7 @@ const applyContentType = (type) => {
   $('idea-label').textContent = spec.ideaLabel;
   $('idea').placeholder = spec.ideaPlaceholder;
   $('video-options').hidden = !spec.videoOptions;
+  $('format-field').hidden = !spec.videoOptions;
   $('variant-field').hidden = !spec.videoOptions;
   if (!spec.videoOptions) $('variant-count').value = '1';
 
@@ -157,21 +158,31 @@ const applyContentType = (type) => {
   emptyRun();
 };
 
-// ---------- Hook/Varyant Testi: see server/prompts.js (HOOK_ANGLES) and pipeline.js --------
-/** N varyant = N kat maliyet; only worth showing while a real (non-mocked) run would charge. */
+const selectedFormats = () => [...document.querySelectorAll('input[name="format"]:checked')].map((box) => box.value);
+
+// ---------- Hook/Varyant Testi + Çoklu Format Export: see server/prompts.js (HOOK_ANGLES), ----
+// server/pipeline.js. N varyant × M format = N×M kat maliyet; only worth showing while a real
+// (non-mocked) run would actually charge for it.
 const updateVariantCostNote = () => {
   const note = $('variant-cost-note');
-  const count = Number($('variant-count').value);
+  const variantCount = Number($('variant-count').value);
+  const formatCount = Math.max(1, selectedFormats().length);
+  const total = variantCount * formatCount;
   const costs = state.credits?.enabled && state.credits.appliesNow;
-  note.hidden = count <= 1 || !costs;
-  if (!note.hidden) note.textContent = `${count} varyant = ${count} kredi (her varyant ayrı video render eder)`;
+  note.hidden = total <= 1 || !costs;
+  if (note.hidden) return;
+  const parts = [];
+  if (variantCount > 1) parts.push(`${variantCount} varyant`);
+  if (formatCount > 1) parts.push(`${formatCount} format`);
+  note.textContent = `${parts.join(' × ')} = ${total} kredi`;
 };
 
 const updateStartEnabled = () => {
   const spec = CONTENT_TYPES[state.contentType];
   const hasImage = Boolean(state.image);
   const hasIdea = $('idea').value.trim().length > 0;
-  $('start').disabled = spec.imageRequired ? !hasImage : !(hasImage || hasIdea);
+  const hasFormat = !spec.videoOptions || selectedFormats().length > 0;
+  $('start').disabled = (spec.imageRequired ? !hasImage : !(hasImage || hasIdea)) || !hasFormat;
 };
 
 const setImage = (file) => {
@@ -241,7 +252,8 @@ const start = async () => {
         image: state.image,
         idea: $('idea').value,
         model: $('model').value,
-        aspectRatio: $('aspect').value,
+        aspectRatio: selectedFormats()[0] || '16:9',
+        formats: selectedFormats(),
         variantCount: Number($('variant-count').value),
         useBrandKit: $('use-brand-kit').checked,
       }),
@@ -304,20 +316,31 @@ const renderVariantCard = (variant, usedFreeCredit) => {
     </li>`)
     .join('');
 
+  // Çoklu Format Export: older jobs (or a fallback single-format render) only ever had
+  // `videoUrl` - normalise both shapes into the same [{ format, url }] list to render.
+  const videos = result.videoUrls?.length ? result.videoUrls : (result.videoUrl ? [{ format: null, url: result.videoUrl }] : []);
+  const videosHtml = videos
+    .map((video) => `<div class="watermark-frame variant-format">
+      ${video.format ? `<span class="format-tag">${escapeHtml(video.format)}</span>` : ''}
+      <video class="variant-video" src="${video.url}" controls playsinline></video>
+      <span class="watermark-badge" ${usedFreeCredit ? '' : 'hidden'}>ÜCRETSİZ DENEME</span>
+    </div>`)
+    .join('');
+  const downloadsHtml = videos
+    .map((video) => `<a class="ghost variant-download" href="${video.url}" download>${video.format ? `${video.format} indir` : 'Videoyu indir'}</a>`)
+    .join('');
+
   return `<div class="variant-card">
     <div class="variant-head">
       <strong>${escapeHtml(variant.angleLabel || 'Varyant')}</strong>
       <span class="badge ${variant.status}">${VARIANT_STATUS_LABELS[variant.status] || variant.status}</span>
     </div>
     <ol class="variant-steps">${stepsHtml}</ol>
-    <div class="watermark-frame">
-      <video class="variant-video" ${result.videoUrl ? `src="${result.videoUrl}"` : ''} controls playsinline ${result.videoUrl ? '' : 'hidden'}></video>
-      <span class="watermark-badge" ${usedFreeCredit && result.videoUrl ? '' : 'hidden'}>ÜCRETSİZ DENEME</span>
-    </div>
+    <div class="variant-videos">${videosHtml}</div>
     ${result.title ? `<p class="mono variant-title">${escapeHtml(result.title)}</p>` : ''}
     ${result.caption ? `<p class="variant-caption">${escapeHtml(result.caption)}</p>` : ''}
     ${result.finalPrompt ? `<details><summary>Video prompt'u</summary><pre>${escapeHtml(result.finalPrompt)}</pre></details>` : ''}
-    ${result.videoUrl ? `<a class="ghost variant-download" href="${result.videoUrl}" download>Videoyu indir</a>` : ''}
+    <div class="variant-downloads">${downloadsHtml}</div>
   </div>`;
 };
 
@@ -664,7 +687,6 @@ const saveSettings = async () => {
     body: JSON.stringify({ model: $('set-model').value.trim(), aspectRatio: $('set-aspect').value.trim() }),
   });
   $('model').value = state.settings.model;
-  $('aspect').value = state.settings.aspectRatio;
 };
 
 // ---------- Marka Kiti (Brand Kit) ----------------------------------------------
@@ -854,7 +876,8 @@ const enterApp = async () => {
   renderProviderStatus(status.providers);
   renderBrandKitField();
   $('model').value = status.settings.model;
-  $('aspect').value = status.settings.aspectRatio;
+  for (const box of document.querySelectorAll('input[name="format"]')) box.checked = box.value === status.settings.aspectRatio;
+  if (selectedFormats().length === 0) document.querySelector('.format-checks input').checked = true;
 
   showApp();
   applyContentType(state.contentType);
@@ -871,6 +894,12 @@ const init = async () => {
 
   $('start').addEventListener('click', start);
   $('variant-count').addEventListener('change', updateVariantCostNote);
+  for (const box of document.querySelectorAll('input[name="format"]')) {
+    box.addEventListener('change', () => {
+      updateVariantCostNote();
+      updateStartEnabled();
+    });
+  }
   wireBrandKit();
   const openSettings = () => {
     renderSettingsForm();

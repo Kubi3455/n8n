@@ -45,6 +45,21 @@ once, but steps 3-5 above (script, render, caption) run independently per varian
   to the selector when it applies. A variant that fails refunds only its own credit; siblings that
   finished keep theirs spent.
 
+### Çoklu Format Export
+
+Step 4 (Video render) above can render **more than one aspect ratio from the same job**: check any
+combination of `16:9`, `9:16`, `1:1` in the "Format(lar)" checkboxes and each variant renders one
+VEO3 call per checked format, in parallel. Results show one video player and one download link per
+format, per variant.
+
+- Combines directly with Hook/Varyant Testi: N variants × M formats = N×M separate VEO3 renders,
+  shown as N cards each holding M videos. The cost note above the button reflects the true total
+  (`variants × formats`), and the credit reservation is `N × M`, atomic like the variants-only case.
+- A variant that doesn't finish (any of its formats failing counts as that whole variant failing)
+  refunds all `M` of its reserved credits, not just one.
+- Older jobs and any API/webhook caller (see Feature 5) that only ever sends the single legacy
+  `aspectRatio` field keep working unchanged — it's treated as a one-format request.
+
 ## Pipeline (Instagram Carousel)
 
 1. **Konu toplama** — the member describes the topic and optionally uploads a reference image.
@@ -159,7 +174,7 @@ dialog behind it) shows which providers are live and which are mocked. Add keys 
 | `GET` | `/api/status` | User, provider status, settings |
 | `GET`/`PUT` | `/api/settings` | Default model/aspect ratio for the video modes |
 | `GET`/`PUT`/`DELETE` | `/api/brand-kit` | The member's Marka Kiti (reference images, palette, tone, character) |
-| `POST` | `/api/jobs` | Start a run (`contentType`, `image` data URL or none, `idea`, `model`, `aspectRatio`, `variantCount` for Normal Video/UGC hook variants, `useBrandKit`) |
+| `POST` | `/api/jobs` | Start a run (`contentType`, `image` data URL or none, `idea`, `model`, `aspectRatio`, `formats` array for Normal Video/UGC multi-format export, `variantCount` for hook variants, `useBrandKit`) |
 | `GET` | `/api/jobs`, `/api/jobs/:id` | Job state (steps, logs, results) |
 | `GET` | `/api/events` | SSE stream of this member's job updates |
 | `GET` | `/api/projects` | The member's projects |

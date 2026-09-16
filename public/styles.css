@@ -215,6 +215,20 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--tex
 .variant-caption { font-size: 13px; }
 .variant-download { text-align: center; text-decoration: none; font-size: 12px; padding: 7px; }
 
+/* ---------- çoklu format export ---------- */
+.format-checks { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text); }
+.format-checks label { display: flex; align-items: center; gap: 5px; }
+.variant-videos { display: grid; gap: 8px; }
+.variant-videos:has(.variant-format:nth-child(2)) { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.variant-format { position: relative; }
+.format-tag {
+  position: absolute; top: 6px; left: 6px; z-index: 2;
+  padding: 2px 7px; border-radius: 6px; background: rgba(13, 15, 20, 0.72);
+  color: var(--text); font-size: 10px; font-weight: 700;
+}
+.variant-downloads { display: flex; flex-wrap: wrap; gap: 6px; }
+.variant-downloads .variant-download { flex: 1; }
+
 .character3d-card {
   display: grid; gap: 12px;
   padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2);
