@@ -97,6 +97,7 @@ export const upsertProject = async (userId, imageKey, values) => {
       slides: [], // carousel only: [{ index, imageUrl, headline, body }]
       modelUrl: '', // character3d only: downloadable .glb mesh
       previewImageUrl: '', // character3d only: rendered turntable preview
+      feedback: null, // Basit Performans Geri Bildirimi: { rating: 1-5, note, updatedAt } once the member leaves one
       status: PROJECT_STATUS.processing,
       createdAt: now,
       updatedAt: now,
@@ -111,6 +112,23 @@ export const upsertProject = async (userId, imageKey, values) => {
   projects[index] = project;
   await writeJsonFile(PROJECTS_FILE, projects);
   return project;
+};
+
+/**
+ * Basit Performans Geri Bildirimi: attaches a 1-5 rating + free-text note to an existing
+ * project. Never creates one - a project must already exist to leave feedback on it.
+ */
+export const saveProjectFeedback = async (userId, imageKey, { rating, note }) => {
+  const projects = await allProjects();
+  const index = projects.findIndex((project) => project.userId === userId && project.imageKey === imageKey);
+  if (index === -1) return null;
+
+  projects[index] = {
+    ...projects[index],
+    feedback: { rating, note, updatedAt: new Date().toISOString() },
+  };
+  await writeJsonFile(PROJECTS_FILE, projects);
+  return projects[index];
 };
 
 export const deleteProject = async (userId, imageKey) => {

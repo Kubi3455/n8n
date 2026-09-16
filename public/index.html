@@ -234,7 +234,7 @@
         <table id="projects">
           <thead>
             <tr>
-              <th>Önizleme</th><th>Tür</th><th>Başlık</th><th>Metin</th><th>Durum</th><th></th>
+              <th>Önizleme</th><th>Tür</th><th>Başlık</th><th>Metin</th><th>Durum</th><th>Performans</th><th></th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -314,6 +314,30 @@
         <button id="upgrade-cta" class="primary" type="button" disabled>Üyeliği Yükselt (yakında)</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="feedback-dialog">
+    <form method="dialog" class="settings-form">
+      <h2>Bu içerik nasıl performans gösterdi?</h2>
+      <label class="field">
+        <span>Puan</span>
+        <div class="rating-picker" id="feedback-rating-picker">
+          <button type="button" data-rating="1">1</button>
+          <button type="button" data-rating="2">2</button>
+          <button type="button" data-rating="3">3</button>
+          <button type="button" data-rating="4">4</button>
+          <button type="button" data-rating="5">5</button>
+        </div>
+      </label>
+      <label class="field">
+        <span>Not (isteğe bağlı)</span>
+        <textarea id="feedback-note" rows="3" placeholder="Örn: Beklenenden çok daha fazla izlenme aldı"></textarea>
+      </label>
+      <div class="settings-actions">
+        <button value="cancel" class="ghost" type="submit">Vazgeç</button>
+        <button id="save-feedback" value="save" class="primary" type="submit">Kaydet</button>
+      </div>
+    </form>
   </dialog>
 
   <script type="module" src="app.js"></script>

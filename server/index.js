@@ -19,6 +19,7 @@ import {
   getSettings,
   listProjects,
   saveBrandKit,
+  saveProjectFeedback,
   saveSettings,
 } from './store.js';
 
@@ -174,6 +175,21 @@ app.delete('/api/projects/:imageKey', async (req, res) => {
   if (!requireAuth(req, res)) return;
   const removed = await deleteProject(req.user.id, req.params.imageKey);
   res.json(removed ? 200 : 404, { removed });
+});
+
+// Basit Performans Geri Bildirimi: a 1-5 rating + free-text note on a finished project.
+// Recording and displaying it is the whole feature - no recommendation engine reads this yet.
+app.put('/api/projects/:imageKey/feedback', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  const rating = Number(req.body.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return res.json(400, { error: 'Puan 1 ile 5 arasında olmalı' });
+
+  const project = await saveProjectFeedback(req.user.id, req.params.imageKey, {
+    rating,
+    note: String(req.body.note || '').slice(0, 500),
+  });
+  if (!project) return res.json(404, { error: 'Proje bulunamadı' });
+  res.json(200, project);
 });
 
 app.get('/api/jobs', (req, res) => {

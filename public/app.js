@@ -56,6 +56,8 @@ const state = {
   jobs: new Map(),
   brandKit: null,
   brandKitDraftImages: [], // settings-dialog working copy: existing hosted URLs + newly added data URLs
+  feedbackTarget: null, // imageKey of the project the feedback dialog is currently open for
+  feedbackRating: 0,
 };
 
 const api = async (url, options) => {
@@ -644,7 +646,7 @@ const loadProjects = async () => {
   const body = $('projects').querySelector('tbody');
 
   if (projects.length === 0) {
-    body.innerHTML = '<tr><td colspan="6" class="muted">Henüz proje yok — ilk içeriğini üret.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="muted">Henüz proje yok — ilk içeriğini üret.</td></tr>';
     return;
   }
 
@@ -657,6 +659,7 @@ const loadProjects = async () => {
       <td>${escapeHtml(project.title || '—')}</td>
       <td class="caption">${escapeHtml(project.caption || project.idea || '—')}</td>
       <td><span class="badge ${project.status}">${STATUS_BADGES[project.status] || project.status}</span></td>
+      <td>${renderFeedbackCell(project)}</td>
       <td>
         ${project.videoUrl ? `<a href="${project.videoUrl}" target="_blank" rel="noopener">video</a> ` : ''}
         ${project.modelUrl ? `<a href="${project.modelUrl}" download>.glb</a> ` : ''}
@@ -672,6 +675,60 @@ const loadProjects = async () => {
       loadProjects();
     });
   }
+  for (const button of body.querySelectorAll('[data-feedback]')) {
+    button.addEventListener('click', () => {
+      const project = projects.find((candidate) => candidate.imageKey === button.dataset.feedback);
+      openFeedback(project);
+    });
+  }
+};
+
+// ---------- Basit Performans Geri Bildirimi ---------------------------------------
+const STARS = (rating) => '★'.repeat(rating) + '☆'.repeat(5 - rating);
+
+/** Only a finished project can be rated; anything else shows a plain dash. */
+const renderFeedbackCell = (project) => {
+  if (project.status !== 'ready') return '<span class="muted">—</span>';
+  if (project.feedback) {
+    return `<button class="link-button feedback-stars" data-feedback="${escapeHtml(project.imageKey)}" title="${escapeHtml(project.feedback.note || '')}">${STARS(project.feedback.rating)}</button>`;
+  }
+  return `<button class="link-button" data-feedback="${escapeHtml(project.imageKey)}">geri bildirim ver</button>`;
+};
+
+const renderFeedbackRatingPicker = () => {
+  for (const button of $('feedback-rating-picker').querySelectorAll('[data-rating]')) {
+    button.classList.toggle('selected', Number(button.dataset.rating) === state.feedbackRating);
+  }
+};
+
+const openFeedback = (project) => {
+  state.feedbackTarget = project.imageKey;
+  state.feedbackRating = project.feedback?.rating || 0;
+  renderFeedbackRatingPicker();
+  $('feedback-note').value = project.feedback?.note || '';
+  $('feedback-dialog').showModal();
+};
+
+const saveFeedback = async () => {
+  if (!state.feedbackRating) return;
+  await api(`/api/projects/${encodeURIComponent(state.feedbackTarget)}/feedback`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating: state.feedbackRating, note: $('feedback-note').value.trim() }),
+  });
+  await loadProjects();
+};
+
+const wireFeedback = () => {
+  for (const button of $('feedback-rating-picker').querySelectorAll('[data-rating]')) {
+    button.addEventListener('click', () => {
+      state.feedbackRating = Number(button.dataset.rating);
+      renderFeedbackRatingPicker();
+    });
+  }
+  $('feedback-dialog').addEventListener('close', () => {
+    if ($('feedback-dialog').returnValue === 'save') saveFeedback().catch((error) => alert(error.message));
+  });
 };
 
 // ---------- settings -----------------------------------------------------------
@@ -901,6 +958,7 @@ const init = async () => {
     });
   }
   wireBrandKit();
+  wireFeedback();
   const openSettings = () => {
     renderSettingsForm();
     renderBrandKitForm();

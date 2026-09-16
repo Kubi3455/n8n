@@ -108,6 +108,15 @@ instruction and a fixed recurring character description — managed from **Ayarl
 - The brand kit actually used is snapshotted onto the job at creation time, so editing or deleting
   the kit afterwards never changes a job that's already running or already finished.
 
+## Basit Performans Geri Bildirimi
+
+Any finished project can be rated from the **Projelerim** table: a 1-5 star rating plus an optional
+free-text note (`server/store.js`'s `saveProjectFeedback`, `PUT /api/projects/:imageKey/feedback`).
+This is intentionally just recording and display — there's no scoring, no aggregation across
+projects, and nothing else in the app reads a project's feedback. A project must exist and reach
+`ready` status before a rating can be left on it; the table shows a star rating (hover for the note)
+once one exists, or a "geri bildirim ver" link otherwise.
+
 ## Free credit system
 
 Prices and free-credit amounts aren't final, so this whole feature lives in one file,
@@ -178,6 +187,7 @@ dialog behind it) shows which providers are live and which are mocked. Add keys 
 | `GET` | `/api/jobs`, `/api/jobs/:id` | Job state (steps, logs, results) |
 | `GET` | `/api/events` | SSE stream of this member's job updates |
 | `GET` | `/api/projects` | The member's projects |
+| `PUT` | `/api/projects/:imageKey/feedback` | Leave a 1-5 rating + note on a finished project |
 | `DELETE` | `/api/projects/:imageKey` | Remove a project |
 
 Everything except the auth routes requires a session cookie, and every query is scoped to the

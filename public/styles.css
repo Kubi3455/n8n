@@ -229,6 +229,15 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--tex
 .variant-downloads { display: flex; flex-wrap: wrap; gap: 6px; }
 .variant-downloads .variant-download { flex: 1; }
 
+/* ---------- basit performans geri bildirimi ---------- */
+.rating-picker { display: flex; gap: 6px; }
+.rating-picker button {
+  width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 13px;
+}
+.rating-picker button.selected { background: var(--accent); border-color: var(--accent); color: #23180a; font-weight: 700; }
+.feedback-stars { color: var(--accent); letter-spacing: 1px; }
+
 .character3d-card {
   display: grid; gap: 12px;
   padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2);
