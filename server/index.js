@@ -3,9 +3,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { attachUser, clearSessionCookie, createSession, destroySession, login, register, requireAuth, setSessionCookie } from './auth.js';
-import { config, paths, providerStatus, setPublicUrl } from './config.js';
+import { config, isFullyMocked, paths, providerStatus, setPublicUrl } from './config.js';
+import * as credits from './credits.js'; // self-contained; see server/credits.js to remove
 import { createServer, listenOnFreePort } from './http-server.js';
-import { bus, createJob, getJob, listJobs, restoreJobs } from './jobs.js';
+import { bus, createJob, getJob, listJobs, log, restoreJobs, setStatus } from './jobs.js';
 import { runPipeline } from './pipeline.js';
 import { CONTENT_TYPES, OPTIONAL_IMAGE_TYPES, deleteProject, getSettings, listProjects, saveSettings } from './store.js';
 
@@ -88,7 +89,8 @@ app.get('/api/auth/me', (req, res) => res.json(200, { user: req.user }));
 // ---------- app -------------------------------------------------------------
 app.get('/api/status', async (req, res) => {
   const settings = req.user ? await getSettings(req.user.id) : null;
-  res.json(200, { user: req.user, providers: providerStatus(), settings, publicUrl: config.publicUrl });
+  const creditStatus = req.user ? await credits.publicStatus(req.user.id, { isFullyMocked: isFullyMocked() }) : null;
+  res.json(200, { user: req.user, providers: providerStatus(), settings, credits: creditStatus, publicUrl: config.publicUrl });
 });
 
 app.get('/api/settings', async (req, res) => {
@@ -130,6 +132,7 @@ app.get('/api/jobs/:id', (req, res) => {
 
 app.post('/api/jobs', async (req, res) => {
   if (!requireAuth(req, res)) return;
+  let reservation = { allowed: true, usedFreeCredit: false };
   try {
     const { image, idea = '', model, aspectRatio, contentType } = req.body;
     const type = CONTENT_TYPES[contentType] || CONTENT_TYPES.ugc;
@@ -138,6 +141,22 @@ app.post('/api/jobs', async (req, res) => {
     if (!String(idea).trim() && !image) return res.json(400, { error: 'Bir konu ya da fikir yazın' });
 
     const settings = await getSettings(req.user.id);
+
+    // Credit gate: reserve before any upload/pipeline work starts, so a request that will
+    // be refused never touches disk or spends anything. Mock-mode runs never reach here
+    // as anything but free (isFullyMocked short-circuits reserve() to always allow).
+    reservation = await credits.reserve({ userId: req.user.id, isFullyMocked: isFullyMocked() });
+    if (!reservation.allowed) {
+      return res.json(402, { error: credits.OUT_OF_CREDITS_MESSAGE, code: 'OUT_OF_CREDITS', creditsRemaining: 0 });
+    }
+
+    // Free credits only ever run the cheapest engine tier - downgraded, not rejected, so a
+    // pre-selected "quality" option never turns into a hard failure for a free run.
+    const requestedModel = model || settings.model;
+    const { value: effectiveModel, downgraded } = credits.enforceFreeTier('veo3', requestedModel, {
+      usedFreeCredit: reservation.usedFreeCredit,
+    });
+
     const upload = await saveUpload(image, req.user.id);
     // Scoped by content type too: the same photo can become a video AND a carousel
     // without one overwriting the other's project.
@@ -146,23 +165,40 @@ app.post('/api/jobs', async (req, res) => {
     const running = listJobs(req.user.id).find(
       (job) => job.imageKey === imageKey && (job.status === 'running' || job.status === 'queued'),
     );
-    if (running) return res.json(409, { error: 'Bu içerik için bir akış zaten çalışıyor' });
+    if (running) {
+      if (reservation.usedFreeCredit) await credits.refund(req.user.id, 'duplicate request');
+      return res.json(409, { error: 'Bu içerik için bir akış zaten çalışıyor' });
+    }
 
     const job = createJob({
       userId: req.user.id,
       imageKey,
       contentType: type,
+      usedFreeCredit: reservation.usedFreeCredit,
       input: {
         idea: String(idea).slice(0, 2000),
-        model: model || settings.model,
+        model: effectiveModel,
         aspectRatio: aspectRatio || settings.aspectRatio,
       },
     });
+    if (downgraded) log(job, `Ücretsiz kredi: "${requestedModel}" yerine "${effectiveModel}" kullanılıyor`, 'warn');
 
-    // Fire and forget: progress reaches the browser over SSE.
-    runPipeline(job, { ...upload, imageKey }).catch((error) => console.error('Pipeline crashed:', error));
+    // Fire and forget: progress reaches the browser over SSE. A failed run refunds its
+    // credit - free trials shouldn't be spent on our bugs or a transient provider error.
+    runPipeline(job, { ...upload, imageKey })
+      .catch((error) => {
+        console.error('Pipeline crashed:', error);
+        setStatus(job, 'failed', error.message);
+      })
+      .then(() => {
+        if (reservation.usedFreeCredit && job.status === 'failed') return credits.refund(req.user.id, 'pipeline failed');
+      })
+      .catch((error) => console.error('Credit refund failed:', error));
     res.json(202, job);
   } catch (error) {
+    // Reached only when something threw after a credit was already reserved but before a
+    // job took ownership of it (e.g. a bad upload) - give it back rather than lose it.
+    if (reservation.usedFreeCredit) await credits.refund(req.user.id, 'request failed before job started').catch(() => {});
     fail(res, error);
   }
 });

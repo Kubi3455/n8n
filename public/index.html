@@ -20,6 +20,7 @@
     </div>
     <div class="topbar-right">
       <button id="mode-pill" class="mode-pill" type="button" hidden>Deneme modu</button>
+      <button id="credits-pill" class="credits-pill" type="button" hidden></button>
       <button id="open-settings" class="ghost" type="button">Ayarlar</button>
       <div class="account">
         <span id="account-name"></span>
@@ -133,12 +134,18 @@
         <div class="output-grid">
           <figure class="output-card">
             <figcaption>Üretilen görsel</figcaption>
-            <img id="out-image" alt="Üretilen görsel" hidden />
+            <div class="watermark-frame">
+              <img id="out-image" alt="Üretilen görsel" hidden />
+              <span class="watermark-badge" data-watermark hidden>ÜCRETSİZ DENEME</span>
+            </div>
             <p id="out-image-empty" class="muted">Henüz üretilmedi</p>
           </figure>
           <figure class="output-card">
             <figcaption>Video</figcaption>
-            <video id="out-video" controls playsinline hidden></video>
+            <div class="watermark-frame">
+              <video id="out-video" controls playsinline hidden></video>
+              <span class="watermark-badge" data-watermark hidden>ÜCRETSİZ DENEME</span>
+            </div>
             <p id="out-video-empty" class="muted">Henüz render edilmedi</p>
           </figure>
         </div>
@@ -180,10 +187,11 @@
       <!-- 3D Karakter çıktısı -->
       <div id="outputs-character3d" class="outputs" hidden>
         <div class="character3d-card">
-          <div id="model-viewer-wrap" class="model-viewer-wrap">
+          <div id="model-viewer-wrap" class="model-viewer-wrap watermark-frame">
             <model-viewer id="model-viewer" camera-controls auto-rotate touch-action="pan-y" shadow-intensity="1" hidden></model-viewer>
             <img id="character-preview" alt="3D karakter önizlemesi" hidden />
             <p id="character-preview-empty" class="muted">Henüz üretilmedi</p>
+            <span class="watermark-badge" data-watermark hidden>ÜCRETSİZ DENEME</span>
           </div>
           <div class="character3d-actions">
             <a id="model-download" class="primary character3d-download" download hidden>.glb dosyasını indir</a>
@@ -257,6 +265,18 @@
         <button id="save-settings" value="save" class="primary" type="submit">Kaydet</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="out-of-credits">
+    <div class="credits-dialog">
+      <h2>Ücretsiz krediniz bitti</h2>
+      <p id="out-of-credits-message" class="muted"></p>
+      <p class="muted">Fiyatlandırma ve üyelik planları yakında burada olacak.</p>
+      <div class="settings-actions">
+        <form method="dialog"><button class="ghost" type="submit">Kapat</button></form>
+        <button id="upgrade-cta" class="primary" type="button" disabled>Üyeliği Yükselt (yakında)</button>
+      </div>
+    </div>
   </dialog>
 
   <script type="module" src="app.js"></script>

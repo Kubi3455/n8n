@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { auth as authConfig, config, paths } from './config.js';
+import { grantSignupCredits } from './credits.js';
 import { readJsonFile, writeJsonFile } from './store.js';
 
 const USERS_FILE = path.join(paths.data, 'users.json');
@@ -46,6 +47,7 @@ export const register = async ({ email, password, name }) => {
 
   users.push(user);
   await writeJsonFile(USERS_FILE, users);
+  await grantSignupCredits(user.id); // see server/credits.js for how to remove this feature
   return publicUser(user);
 };
 

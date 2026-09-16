@@ -49,6 +49,7 @@ const state = {
   user: null,
   settings: null,
   providers: null,
+  credits: null,
   contentType: 'video',
   image: null,
   activeJobId: null,
@@ -58,7 +59,11 @@ const state = {
 const api = async (url, options) => {
   const response = await fetch(url, options);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `${response.status} ${response.statusText}`);
+  if (!response.ok) {
+    const error = new Error(data.error || `${response.status} ${response.statusText}`);
+    error.code = data.code;
+    throw error;
+  }
   return data;
 };
 
@@ -86,6 +91,33 @@ const renderMode = (providers) => {
   pill.title = mocked.length
     ? 'Bazı servisler örnek verilerle çalışıyor: gerçek içerik üretilmez. Ayrıntı için tıkla.'
     : '';
+};
+
+// ---------- free credit system: see server/credits.js to remove this feature ------
+const renderCredits = (credits) => {
+  state.credits = credits;
+  const pill = $('credits-pill');
+  if (!credits || !credits.enabled || !credits.appliesNow) {
+    pill.hidden = true;
+    return;
+  }
+  pill.hidden = false;
+  pill.textContent = `${credits.remaining} ücretsiz kredi`;
+  pill.classList.toggle('low', credits.remaining === 0);
+};
+
+const refreshCredits = async () => {
+  try {
+    const status = await api('/api/status');
+    renderCredits(status.credits);
+  } catch {
+    // Best-effort refresh; the next successful /api/status call catches up.
+  }
+};
+
+const showOutOfCredits = (message) => {
+  $('out-of-credits-message').textContent = message || 'Ücretsiz krediniz bitti.';
+  $('out-of-credits').showModal();
 };
 
 const renderProviderStatus = (providers) => {
@@ -198,9 +230,15 @@ const start = async () => {
     });
     state.activeJobId = job.id;
     upsertJob(job);
+    if (job.usedFreeCredit) refreshCredits();
   } catch (error) {
-    $('compose-error').textContent = error.message;
-    $('compose-error').hidden = false;
+    if (error.code === 'OUT_OF_CREDITS') {
+      showOutOfCredits(error.message);
+      renderCredits({ ...state.credits, remaining: 0 });
+    } else {
+      $('compose-error').textContent = error.message;
+      $('compose-error').hidden = false;
+    }
   } finally {
     updateStartEnabled();
   }
@@ -231,6 +269,11 @@ const renderLog = (job) => {
   if (atBottom) box.scrollTop = box.scrollHeight;
 };
 
+/** Shows/hides every free-trial watermark badge matching `selector`. See server/credits.js. */
+const setWatermarks = (selector, visible) => {
+  for (const badge of document.querySelectorAll(selector)) badge.hidden = !visible;
+};
+
 // ---------- run view: video outputs ------------------------------------------
 const renderVideoOutputs = (job) => {
   const { result } = job;
@@ -255,6 +298,8 @@ const renderVideoOutputs = (job) => {
   $('out-description').textContent = result.imageDescription || '';
   $('out-image-prompt').textContent = result.imagePrompt || '';
   $('out-final-prompt').textContent = result.finalPrompt || '';
+
+  setWatermarks('#outputs-video [data-watermark]', job.usedFreeCredit);
 };
 
 // ---------- run view: carousel outputs (client-side text compositing) --------
@@ -289,7 +334,7 @@ const loadImage = (src) => new Promise((resolve, reject) => {
 });
 
 /** Draws one slide's background + headline/body text onto a fresh canvas. */
-const composeSlide = async (slide) => {
+const composeSlide = async (slide, watermark) => {
   await document.fonts.ready;
 
   const canvas = document.createElement('canvas');
@@ -344,6 +389,31 @@ const composeSlide = async (slide) => {
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
   ctx.fillText(`${slide.index}/6`, marginX, 92);
 
+  // Free-trial watermark: baked into the pixels (unlike the video/3D screen-only overlay)
+  // so a downloaded slide can't lose it. See server/credits.js to remove this feature.
+  if (watermark) {
+    const label = 'ÜCRETSİZ DENEME';
+    ctx.font = `700 22px ${CAROUSEL_FONT}`;
+    const textWidth = ctx.measureText(label).width;
+    const padX = 14;
+    const badgeW = textWidth + padX * 2;
+    const badgeH = 38;
+    const bx = CANVAS_W - badgeW - 24;
+    const by = 24;
+    ctx.fillStyle = 'rgba(13, 15, 20, 0.72)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(bx, by, badgeW, badgeH, 8);
+    else ctx.rect(bx, by, badgeW, badgeH); // older browsers without roundRect
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(240, 180, 41, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#f0b429';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, bx + padX, by + badgeH / 2 + 1);
+    ctx.textBaseline = 'alphabetic';
+  }
+
   return canvas;
 };
 
@@ -386,7 +456,7 @@ const renderCarouselOutputs = async (job) => {
     `;
     grid.appendChild(card);
 
-    composeSlide(slide).then((canvas) => {
+    composeSlide(slide, job.usedFreeCredit).then((canvas) => {
       renderedCanvases.set(slide.index, canvas);
       const wrap = card.querySelector('.carousel-canvas-wrap');
       wrap.innerHTML = '';
@@ -450,6 +520,8 @@ const renderCharacterOutputs = (job) => {
   $('out-character-caption').textContent = result.caption || '';
   $('out-character-description').textContent = result.imageDescription || '';
   $('out-character-prompt').textContent = result.imagePrompt || '';
+
+  setWatermarks('#outputs-character3d [data-watermark]', job.usedFreeCredit);
 };
 
 // ---------- run view: dispatch ------------------------------------------------
@@ -571,6 +643,10 @@ const connectEvents = () => {
     }
     upsertJob(payload.job);
     if (payload.event === 'status' || payload.event === 'created') loadProjects();
+    // A finished job may have consumed or refunded a credit - keep the pill accurate.
+    if (payload.event === 'status' && ['completed', 'failed'].includes(payload.job.status) && payload.job.usedFreeCredit) {
+      refreshCredits();
+    }
   };
 };
 
@@ -655,6 +731,7 @@ const enterApp = async () => {
 
   $('account-name').textContent = status.user.name || status.user.email;
   renderMode(status.providers);
+  renderCredits(status.credits);
   renderSettingsForm();
   renderProviderStatus(status.providers);
   $('model').value = status.settings.model;

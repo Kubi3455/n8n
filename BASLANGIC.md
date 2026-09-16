@@ -39,8 +39,14 @@ http://localhost:4321 — port doluysa uygulama bir sonraki boş portu seçer ve
    slaytlarını indirebilirsin.
 
 API anahtarı girmediğin sürece tüm servisler sahte (mock) verilerle çalışır: hiçbir ücret
-oluşmaz. Üst çubuktaki "Deneme modu" rozeti hangi servisin mock olduğunu gösterir, tıklayınca
-ayrıntıyı açar.
+oluşmaz, sınırsız denersin. Üst çubuktaki "Deneme modu" rozeti hangi servisin mock olduğunu
+gösterir, tıklayınca ayrıntıyı açar.
+
+Gerçek anahtarları ekledikten sonra her hesap **2 ücretsiz kredi** ile başlar — bu kredilerle
+üretilen içeriklerde küçük bir "ÜCRETSİZ DENEME" filigranı olur ve sadece en ucuz motor
+kullanılır (örn. VEO3 Quality yerine VEO3 Fast). Krediler bitince devam etmek için üyelik
+yükseltmesi istenir. Bu miktarları `.env` dosyasındaki `FREE_CREDITS_ON_SIGNUP` ile
+değiştirebilir, `CREDIT_SYSTEM_ENABLED=0` ile tamamen kapatabilirsin.
 
 ## 4. Anahtarları sonra ekle
 

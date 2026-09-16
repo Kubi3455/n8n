@@ -83,3 +83,7 @@ export const providerStatus = () => ({
 
 // A provider falls back to its mock implementation when MOCK_MODE is on or its key is missing.
 export const useMock = (provider) => config.mockMode || !config[provider].apiKey;
+
+// True when every provider a job could touch is mocked - i.e. this run costs nothing real.
+// Used by the credit system to decide whether a job should ever consume a credit.
+export const isFullyMocked = () => useMock('openai') && useMock('fal') && useMock('kie');

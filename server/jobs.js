@@ -78,12 +78,13 @@ const emit = (job, event = 'job') => {
   persist();
 };
 
-export const createJob = ({ userId, imageKey, contentType, input }) => {
+export const createJob = ({ userId, imageKey, contentType, input, usedFreeCredit = false }) => {
   const job = {
     id: crypto.randomUUID(),
     userId,
     imageKey,
     contentType,
+    usedFreeCredit, // drives the free-trial watermark in the UI; see server/credits.js
     status: 'queued',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

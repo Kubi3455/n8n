@@ -55,6 +55,32 @@ In mock mode this content type can only show the placeholder preview image — a
 needs a live `FAL_API_KEY`, so the "İndir" button and the `<model-viewer>` stay hidden until then and
 a note explains why.
 
+## Free credit system
+
+Prices and free-credit amounts aren't final, so this whole feature lives in one file,
+**`server/credits.js`**, with a "how to remove it" comment at the top:
+
+- **Mock mode is always unlimited**, regardless of balance — trying the product costs nothing
+  as long as no real provider key is configured (or `MOCK_MODE=1` is set).
+- **A new signup gets `FREE_CREDITS_ON_SIGNUP` (default 2)** credits for runs against real,
+  paid providers. One credit is reserved atomically before a real job starts (so concurrent
+  requests can't overspend the balance) and refunded automatically if that job fails - a free
+  trial shouldn't be spent on our bugs or a transient provider error.
+- **Free credits only ever run the cheapest engine tier.** `ENGINE_TIERS` in `credits.js` maps
+  each engine to a cheap/premium split (today only VEO3's `veo3_fast`/`veo3` model picker is
+  wired to an actual UI control; NanoBanana/Tripo3D quality tiers are pre-configured there for
+  when a selector for them exists). Requesting a premium tier on a free credit **downgrades**
+  it rather than failing the job, with a note in the run's log explaining what happened.
+- **Every free-credit output carries a watermark.** Carousel slides get it baked into the
+  `<canvas>` compositing itself (so it survives the PNG download); video and 3D character
+  results get a screen-only overlay on the result card (not burned into the actual video/mesh
+  file - doing that would need a video-processing dependency this project deliberately avoids).
+- **Running out** returns `402` with `code: "OUT_OF_CREDITS"` from `POST /api/jobs`; the UI
+  shows a dialog explaining that continuing needs an upgrade (the upgrade button is an honest,
+  disabled placeholder - there's no payment flow yet).
+- Set `CREDIT_SYSTEM_ENABLED=0` to turn all of this off with no code changes - every job then
+  runs unmetered, exactly as before this feature existed.
+
 ## Running it
 
 Türkçe adım adım kılavuz: **[BASLANGIC.md](BASLANGIC.md)**.
@@ -111,6 +137,7 @@ server/
   http-server.js  tiny router over node:http (so the app needs no framework)
   env.js          .env reader
   auth.js         registration, login, scrypt hashing, session cookies
+  credits.js      free credit system - self-contained, see the file for how to remove it
   pipeline.js     runVideoPipeline (Normal Video / UGC) + runCarouselPipeline + runCharacterPipeline
   jobs.js         job registry + event bus, step lists per content type
   store.js        projects and per-member settings
