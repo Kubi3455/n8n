@@ -128,6 +128,11 @@
         <span id="variant-cost-note" class="variant-cost-note" hidden></span>
       </label>
 
+      <label class="field checkbox-field" id="brand-kit-field" hidden>
+        <input id="use-brand-kit" type="checkbox" />
+        <span>Marka kitimi bu üretimde kullan</span>
+      </label>
+
       <button id="start" class="primary" type="button" disabled>İçerik oluştur</button>
       <p id="compose-error" class="error" hidden></p>
     </section>
@@ -256,6 +261,40 @@
           <input id="set-aspect" type="text" />
         </label>
       </div>
+      <hr />
+
+      <h3>Marka Kiti</h3>
+      <p class="muted">İsteğe bağlı: yeni video/carousel/3D üretimlerinde otomatik uygulanabilecek kalıcı bir marka kimliği. Üretim ekranındaki "Marka kitimi kullan" kutusunu işaretlediğinde devreye girer.</p>
+
+      <label class="field">
+        <span>Referans görsel(ler)</span>
+        <div id="brand-kit-images" class="brand-kit-images"></div>
+        <input id="brand-kit-image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+        <button id="brand-kit-add-image" class="ghost" type="button">+ Görsel ekle</button>
+      </label>
+
+      <label class="field">
+        <span>Renk paleti (virgülle ayır: #1B1B1F, sıcak sarı)</span>
+        <input id="brand-kit-colors" type="text" placeholder="#1B1B1F, warm yellow" />
+      </label>
+
+      <label class="field">
+        <span>Ton / stil talimatı</span>
+        <textarea id="brand-kit-tone" rows="2" placeholder="Örn: Sıcak, samimi, esprili bir üslup; asla resmi olmasın"></textarea>
+      </label>
+
+      <label class="field">
+        <span>Sabit karakter açıklaması</span>
+        <textarea id="brand-kit-character" rows="2" placeholder="Örn: Kısa kahverengi saçlı, gözlüklü, mavi önlüklü maskot karakter"></textarea>
+      </label>
+
+      <div class="settings-actions">
+        <button id="delete-brand-kit" class="ghost" type="button">Marka kitini sil</button>
+        <span id="brand-kit-saved-note" class="muted" hidden>Kaydedildi</span>
+      </div>
+
+      <hr />
+
       <div class="settings-actions">
         <button value="cancel" class="ghost" type="submit">Kapat</button>
         <button id="save-settings" value="save" class="primary" type="submit">Kaydet</button>

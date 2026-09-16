@@ -146,7 +146,7 @@ CHECKLIST BEFORE OUTPUT:
 - Product text preserved exactly?
 - Only JSON returned?`;
 
-export const ugcImagePromptUser = ({ caption, imageDescription }) => `Your task is to create an image prompt following the system guidelines.
+export const ugcImagePromptUser = ({ caption, imageDescription, brandKit }) => `Your task is to create an image prompt following the system guidelines.
 Ensure that the reference image is represented as **accurately as possible**, including all text elements.
 
 Use the following inputs:
@@ -155,9 +155,9 @@ Use the following inputs:
 ${caption || '(none provided)'}
 
 - **Reference image description:**
-${imageDescription}`;
+${imageDescription}${brandKitClause(brandKit)}`;
 
-export const ugcVideoScriptUser = ({ caption, imageDescription, model, angle }) => `Create a UGC-style video prompt using both the reference image and the user description.
+export const ugcVideoScriptUser = ({ caption, imageDescription, model, angle, brandKit }) => `Create a UGC-style video prompt using both the reference image and the user description.
 
 **Inputs**
 - User description (optional):
@@ -168,7 +168,7 @@ export const ugcVideoScriptUser = ({ caption, imageDescription, model, angle }) 
 **Rules**
 - Keep the style casual, authentic, and realistic. Avoid studio-like or cinematic language.
 - Default model: \`${model || 'veo3_fast'}\`.
-- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.${angleClause(angle)}`;
+- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.${angleClause(angle)}${brandKitClause(brandKit)}`;
 
 // ============================================================================
 // Normal Video - general purpose, style follows whatever the idea calls for.
@@ -199,7 +199,7 @@ OUTPUT CONTRACT:
 - Max 120 words in \`image_prompt\`.
 - Must cover: subject, action, mood, setting, style/camera, colors, and text accuracy.`;
 
-export const generalImagePromptUser = ({ caption, imageDescription }) => `Your task is to create an image prompt following the system guidelines.
+export const generalImagePromptUser = ({ caption, imageDescription, brandKit }) => `Your task is to create an image prompt following the system guidelines.
 Ensure that the reference image is represented as **accurately as possible**, including all text elements.
 
 Use the following inputs:
@@ -208,9 +208,9 @@ Use the following inputs:
 ${caption || '(none provided)'}
 
 - **Reference image description:**
-${imageDescription}`;
+${imageDescription}${brandKitClause(brandKit)}`;
 
-export const generalVideoScriptUser = ({ caption, imageDescription, model, angle }) => `Create a video prompt using both the reference image and the user's idea below.
+export const generalVideoScriptUser = ({ caption, imageDescription, model, angle, brandKit }) => `Create a video prompt using both the reference image and the user's idea below.
 
 **Inputs**
 - User idea:
@@ -221,7 +221,7 @@ export const generalVideoScriptUser = ({ caption, imageDescription, model, angle
 **Rules**
 - Choose whichever style, camera work and mood best serve this specific idea - cinematic, photorealistic, stylized, gritty or elegant. Do not default to one look; let the idea decide.
 - Default model: \`${model || 'veo3_fast'}\`.
-- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.${angleClause(angle)}`;
+- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.${angleClause(angle)}${brandKitClause(brandKit)}`;
 
 // ============================================================================
 // Hook/Varyant Testi - the same idea, opened 3-5 different ways. Each angle steers only
@@ -259,6 +259,22 @@ const angleClause = (angle) => {
   return spec
     ? `\n\n**Hook angle for this variant - "${spec.label}":**\n${spec.instruction}\nLet this angle shape the opening beat of \`description\`, the \`ending\`'s setup, and \`subject.character.lip_sync_line\`/\`audio.voiceover.line\` if either is used. The rest of the schema still reflects the same underlying idea.`
     : '';
+};
+
+// ============================================================================
+// Marka Kiti (Brand Kit) - an optional, persistent per-member identity (reference image,
+// color palette, tone/style, a fixed recurring character) injected into whichever prompt
+// builders below accept a `brandKit` argument, so repeat content stays on-brand.
+// ============================================================================
+
+export const brandKitClause = (brandKit) => {
+  if (!brandKit) return '';
+  const lines = [];
+  if (brandKit.toneInstruction) lines.push(`Tone/style: ${brandKit.toneInstruction}`);
+  if (brandKit.colorPalette?.length) lines.push(`Brand color palette (favor these where a color choice is free): ${brandKit.colorPalette.join(', ')}`);
+  if (brandKit.characterDescription) lines.push(`Recurring brand character (keep this exact description if a character appears): ${brandKit.characterDescription}`);
+  if (!lines.length) return '';
+  return `\n\n**Brand kit - stay consistent with this brand's identity:**\n${lines.join('\n')}`;
 };
 
 // Shared by both video modes - only the user message above differs.
@@ -315,12 +331,12 @@ RULES:
 - No copyrighted names, no fabricated statistics.
 - JSON only - no markdown, no commentary, no extra keys.`;
 
-export const carouselPlanUser = ({ idea, imageDescription }) => `Topic / idea:
+export const carouselPlanUser = ({ idea, imageDescription, brandKit }) => `Topic / idea:
 ${idea || '(none provided)'}
 
 ${imageDescription ? `Reference image analysis (keep the visual thread consistent with this where relevant):\n${imageDescription}` : 'No reference image was provided - invent a fitting, consistent visual style for the topic.'}
 
-Produce the 6-slide carousel plan now, following the system rules exactly.`;
+Produce the 6-slide carousel plan now, following the system rules exactly.${brandKitClause(brandKit)}`;
 
 // ============================================================================
 // 3D Karakter - a topic (and/or a reference image) becomes one prompt suited for
@@ -351,12 +367,12 @@ RULES:
 
 OUTPUT CONTRACT: JSON only - no markdown, no commentary.`;
 
-export const characterPromptUser = ({ idea, imageDescription }) => `Topic / idea:
+export const characterPromptUser = ({ idea, imageDescription, brandKit }) => `Topic / idea:
 ${idea || '(none provided)'}
 
 ${imageDescription ? `Reference image analysis (stay faithful to this):\n${imageDescription}` : 'No reference image was provided - design a fitting character from the topic alone.'}
 
-Produce the { title, prompt } object now, following the system rules exactly.`;
+Produce the { title, prompt } object now, following the system rules exactly.${brandKitClause(brandKit)}`;
 
 // ============================================================================
 // Shared final step: a ready-to-copy caption for whatever was produced.

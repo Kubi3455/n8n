@@ -54,6 +54,8 @@ const state = {
   image: null,
   activeJobId: null,
   jobs: new Map(),
+  brandKit: null,
+  brandKitDraftImages: [], // settings-dialog working copy: existing hosted URLs + newly added data URLs
 };
 
 const api = async (url, options) => {
@@ -241,6 +243,7 @@ const start = async () => {
         model: $('model').value,
         aspectRatio: $('aspect').value,
         variantCount: Number($('variant-count').value),
+        useBrandKit: $('use-brand-kit').checked,
       }),
     });
     state.activeJobId = job.id;
@@ -664,6 +667,79 @@ const saveSettings = async () => {
   $('aspect').value = state.settings.aspectRatio;
 };
 
+// ---------- Marka Kiti (Brand Kit) ----------------------------------------------
+const brandKitHasContent = (kit) =>
+  Boolean(kit && (kit.referenceImages?.length || kit.colorPalette?.length || kit.toneInstruction || kit.characterDescription));
+
+/** Compose panel's "use brand kit" checkbox only makes sense once there's something to inject. */
+const renderBrandKitField = () => {
+  const hasContent = brandKitHasContent(state.brandKit);
+  $('brand-kit-field').hidden = !hasContent;
+  if (!hasContent) $('use-brand-kit').checked = false;
+};
+
+const renderBrandKitImages = () => {
+  $('brand-kit-images').innerHTML = state.brandKitDraftImages
+    .map((src, index) => `<div class="brand-kit-thumb">
+      <img src="${src}" alt="" />
+      <button type="button" class="brand-kit-thumb-remove" data-index="${index}" title="Kaldır">✕</button>
+    </div>`)
+    .join('');
+  for (const button of $('brand-kit-images').querySelectorAll('[data-index]')) {
+    button.addEventListener('click', () => {
+      state.brandKitDraftImages.splice(Number(button.dataset.index), 1);
+      renderBrandKitImages();
+    });
+  }
+};
+
+const renderBrandKitForm = () => {
+  const kit = state.brandKit || {};
+  state.brandKitDraftImages = (kit.referenceImages || []).map((ref) => ref.url);
+  renderBrandKitImages();
+  $('brand-kit-colors').value = (kit.colorPalette || []).join(', ');
+  $('brand-kit-tone').value = kit.toneInstruction || '';
+  $('brand-kit-character').value = kit.characterDescription || '';
+  $('brand-kit-saved-note').hidden = true;
+};
+
+const saveBrandKit = async () => {
+  state.brandKit = await api('/api/brand-kit', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      referenceImages: state.brandKitDraftImages,
+      colorPalette: $('brand-kit-colors').value.split(',').map((color) => color.trim()).filter(Boolean),
+      toneInstruction: $('brand-kit-tone').value.trim(),
+      characterDescription: $('brand-kit-character').value.trim(),
+    }),
+  });
+  renderBrandKitField();
+};
+
+const deleteBrandKit = async () => {
+  if (!confirm('Marka kitini silmek istediğine emin misin?')) return;
+  state.brandKit = await api('/api/brand-kit', { method: 'DELETE' });
+  renderBrandKitForm();
+  renderBrandKitField();
+};
+
+const wireBrandKit = () => {
+  $('brand-kit-add-image').addEventListener('click', () => $('brand-kit-image-input').click());
+  $('brand-kit-image-input').addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      state.brandKitDraftImages.push(reader.result);
+      renderBrandKitImages();
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  });
+  $('delete-brand-kit').addEventListener('click', () => deleteBrandKit().catch((error) => alert(error.message)));
+};
+
 // ---------- events (SSE) --------------------------------------------------------
 let events = null;
 
@@ -769,12 +845,14 @@ const enterApp = async () => {
   state.user = status.user;
   state.settings = status.settings;
   state.providers = status.providers;
+  state.brandKit = await api('/api/brand-kit');
 
   $('account-name').textContent = status.user.name || status.user.email;
   renderMode(status.providers);
   renderCredits(status.credits);
   renderSettingsForm();
   renderProviderStatus(status.providers);
+  renderBrandKitField();
   $('model').value = status.settings.model;
   $('aspect').value = status.settings.aspectRatio;
 
@@ -793,15 +871,19 @@ const init = async () => {
 
   $('start').addEventListener('click', start);
   $('variant-count').addEventListener('change', updateVariantCostNote);
+  wireBrandKit();
   const openSettings = () => {
     renderSettingsForm();
+    renderBrandKitForm();
     if (state.providers) renderProviderStatus(state.providers);
     $('settings').showModal();
   };
   $('open-settings').addEventListener('click', openSettings);
   $('mode-pill').addEventListener('click', openSettings);
   $('settings').addEventListener('close', () => {
-    if ($('settings').returnValue === 'save') saveSettings().catch((error) => alert(error.message));
+    if ($('settings').returnValue === 'save') {
+      Promise.all([saveSettings(), saveBrandKit()]).catch((error) => alert(error.message));
+    }
   });
 
   const { user } = await api('/api/auth/me');

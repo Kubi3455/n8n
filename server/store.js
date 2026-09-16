@@ -4,6 +4,7 @@ import { paths } from './config.js';
 
 const PROJECTS_FILE = path.join(paths.data, 'projects.json');
 const SETTINGS_FILE = path.join(paths.data, 'settings.json');
+const BRAND_KITS_FILE = path.join(paths.data, 'brandkits.json');
 
 export const PROJECT_STATUS = {
   processing: 'processing',
@@ -24,6 +25,21 @@ export const OPTIONAL_IMAGE_TYPES = new Set(['carousel', 'character3d']);
 export const DEFAULT_SETTINGS = {
   model: 'veo3_fast',
   aspectRatio: '16:9',
+};
+
+/**
+ * Marka Kiti (Brand Kit): one persistent object per member - reference image(s), a color
+ * palette, a tone/style instruction and a fixed character description. When a job opts in
+ * (`useBrandKit`), this gets injected into that job's prompts (and, when no image was
+ * uploaded for that job, into the NanoBanana reference image too) so recurring content
+ * stays visually and tonally consistent without retyping the same brand details every time.
+ */
+export const DEFAULT_BRAND_KIT = {
+  referenceImages: [], // [{ url, filePath }] - filePath lets local (no PUBLIC_URL) runs inline the bytes
+  colorPalette: [], // ['#1B1B1F', 'warm yellow', ...] - free-form, passed straight into prompts
+  toneInstruction: '',
+  characterDescription: '',
+  updatedAt: null,
 };
 
 let writeChain = Promise.resolve();
@@ -121,3 +137,26 @@ export const saveSettings = async (userId, patch) => {
   await writeJsonFile(SETTINGS_FILE, settings);
   return next;
 };
+
+const allBrandKits = () => readJsonFile(BRAND_KITS_FILE, {});
+
+export const getBrandKit = async (userId) => ({ ...DEFAULT_BRAND_KIT, ...(await allBrandKits())[userId] });
+
+export const saveBrandKit = async (userId, patch) => {
+  const kits = await allBrandKits();
+  const next = { ...(await getBrandKit(userId)), ...patch, updatedAt: new Date().toISOString() };
+  kits[userId] = next;
+  await writeJsonFile(BRAND_KITS_FILE, kits);
+  return next;
+};
+
+export const deleteBrandKit = async (userId) => {
+  const kits = await allBrandKits();
+  delete kits[userId];
+  await writeJsonFile(BRAND_KITS_FILE, kits);
+  return structuredClone(DEFAULT_BRAND_KIT);
+};
+
+/** A brand kit only "does" anything once it actually has content to inject. */
+export const brandKitHasContent = (kit) =>
+  Boolean(kit && (kit.referenceImages?.length || kit.colorPalette?.length || kit.toneInstruction || kit.characterDescription));

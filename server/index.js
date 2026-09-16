@@ -9,7 +9,18 @@ import { createServer, listenOnFreePort } from './http-server.js';
 import { bus, createJob, getJob, listJobs, log, restoreJobs, setStatus } from './jobs.js';
 import { runPipeline } from './pipeline.js';
 import { HOOK_ANGLES, HOOK_ANGLE_ORDER } from './prompts.js';
-import { CONTENT_TYPES, OPTIONAL_IMAGE_TYPES, deleteProject, getSettings, listProjects, saveSettings } from './store.js';
+import {
+  CONTENT_TYPES,
+  OPTIONAL_IMAGE_TYPES,
+  brandKitHasContent,
+  deleteBrandKit,
+  deleteProject,
+  getBrandKit,
+  getSettings,
+  listProjects,
+  saveBrandKit,
+  saveSettings,
+} from './store.js';
 
 const app = createServer({
   staticDirs: [
@@ -108,6 +119,52 @@ app.put('/api/settings', async (req, res) => {
   }
 });
 
+// ---------- Marka Kiti (Brand Kit) ------------------------------------------
+app.get('/api/brand-kit', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  res.json(200, await getBrandKit(req.user.id));
+});
+
+app.put('/api/brand-kit', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  try {
+    const { referenceImages = [], colorPalette = [], toneInstruction = '', characterDescription = '' } = req.body;
+    if (!Array.isArray(referenceImages) || !Array.isArray(colorPalette)) {
+      return res.json(400, { error: 'Geçersiz marka kiti verisi' });
+    }
+
+    // Each item is either a brand-new data URL upload, or an existing hosted URL the member
+    // kept from before - resolved back to its stored {url, filePath} so localhost inlining
+    // still works without re-uploading anything that wasn't actually changed.
+    const current = await getBrandKit(req.user.id);
+    const resolvedImages = [];
+    for (const item of referenceImages.slice(0, 5)) {
+      if (typeof item !== 'string' || !item) continue;
+      if (item.startsWith('data:')) {
+        const upload = await saveUpload(item, req.user.id);
+        resolvedImages.push({ url: upload.publicUrl, filePath: upload.filePath });
+      } else {
+        resolvedImages.push(current.referenceImages.find((ref) => ref.url === item) || { url: item, filePath: null });
+      }
+    }
+
+    const kit = await saveBrandKit(req.user.id, {
+      referenceImages: resolvedImages,
+      colorPalette: colorPalette.filter((color) => typeof color === 'string' && color.trim()).map((color) => color.trim().slice(0, 40)).slice(0, 12),
+      toneInstruction: String(toneInstruction).slice(0, 1000),
+      characterDescription: String(characterDescription).slice(0, 1000),
+    });
+    res.json(200, kit);
+  } catch (error) {
+    fail(res, error);
+  }
+});
+
+app.delete('/api/brand-kit', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  res.json(200, await deleteBrandKit(req.user.id));
+});
+
 app.get('/api/projects', async (req, res) => {
   if (!requireAuth(req, res)) return;
   res.json(200, await listProjects(req.user.id));
@@ -139,7 +196,7 @@ app.post('/api/jobs', async (req, res) => {
   if (!requireAuth(req, res)) return;
   let reservation = { allowed: true, usedFreeCredit: false, count: 0 };
   try {
-    const { image, idea = '', model, aspectRatio, contentType, variantCount } = req.body;
+    const { image, idea = '', model, aspectRatio, contentType, variantCount, useBrandKit } = req.body;
     const type = CONTENT_TYPES[contentType] || CONTENT_TYPES.ugc;
 
     if (!OPTIONAL_IMAGE_TYPES.has(type) && !image) return res.json(400, { error: 'Bir görsel yükleyin' });
@@ -187,6 +244,12 @@ app.post('/api/jobs', async (req, res) => {
     // without one overwriting the other's project.
     const imageKey = `${type}:${upload.imageKey || keyFromIdea(idea)}`;
 
+    // Marka Kiti: resolved once, here, and snapshotted onto the job's own input rather than
+    // re-read from disk mid-pipeline - so what actually ran stays reproducible in job history
+    // even if the member edits their brand kit again before this job finishes.
+    const brandKit = useBrandKit ? await getBrandKit(req.user.id) : null;
+    const appliedBrandKit = brandKit && brandKitHasContent(brandKit) ? brandKit : null;
+
     const running = listJobs(req.user.id).find(
       (job) => job.imageKey === imageKey && (job.status === 'running' || job.status === 'queued'),
     );
@@ -205,10 +268,12 @@ app.post('/api/jobs', async (req, res) => {
         idea: String(idea).slice(0, 2000),
         model: effectiveModel,
         aspectRatio: aspectRatio || settings.aspectRatio,
+        brandKit: appliedBrandKit,
       },
     });
     if (downgraded) log(job, `Ücretsiz kredi: "${requestedModel}" yerine "${effectiveModel}" kullanılıyor`, 'warn');
     if (requestedVariants > 1) log(job, `${requestedVariants} hook varyantı üretilecek: ${variantSpecs.map((v) => v.angleLabel).join(', ')}`);
+    if (appliedBrandKit) log(job, 'Marka kiti bu üretime uygulandı');
 
     // Fire and forget: progress reaches the browser over SSE. Any variant that didn't finish
     // (or the whole job, for content types without variants) refunds its own credit - free

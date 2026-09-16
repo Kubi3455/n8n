@@ -108,10 +108,11 @@ const MOCK_IMAGE_PROMPT = {
 };
 
 /** "Generate Image Prompt" agent - style depends on content type ('ugc' | 'general'). */
-export const generateImagePrompt = async ({ caption, imageDescription, style = 'ugc' }) => {
+export const generateImagePrompt = async ({ caption, imageDescription, style = 'ugc', brandKit }) => {
   if (useMock('openai')) {
     await sleep(500);
-    return { image_prompt: MOCK_IMAGE_PROMPT[style] || MOCK_IMAGE_PROMPT.general };
+    const base = MOCK_IMAGE_PROMPT[style] || MOCK_IMAGE_PROMPT.general;
+    return { image_prompt: brandKit ? `${base}; marka kiti: ${brandKit.toneInstruction || 'stil talimatı uygulandı'}` : base };
   }
 
   const isUgc = style === 'ugc';
@@ -120,7 +121,7 @@ export const generateImagePrompt = async ({ caption, imageDescription, style = '
     jsonMode: true,
     messages: [
       { role: 'system', content: isUgc ? UGC_IMAGE_PROMPT_SYSTEM : GENERAL_IMAGE_PROMPT_SYSTEM },
-      { role: 'user', content: (isUgc ? ugcImagePromptUser : generalImagePromptUser)({ caption, imageDescription }) },
+      { role: 'user', content: (isUgc ? ugcImagePromptUser : generalImagePromptUser)({ caption, imageDescription, brandKit }) },
     ],
   });
 
@@ -177,15 +178,18 @@ const MOCK_VIDEO_SCRIPT = {
  * `angle` (see HOOK_ANGLES in prompts.js) steers the opening beat for hook/variant testing;
  * omitted, the agent picks its own opening as before.
  */
-export const generateVideoScript = async ({ caption, imageDescription, model, style = 'ugc', angle }) => {
+export const generateVideoScript = async ({ caption, imageDescription, model, style = 'ugc', angle, brandKit }) => {
   if (useMock('openai')) {
     await sleep(700);
     const mock = MOCK_VIDEO_SCRIPT[style] || MOCK_VIDEO_SCRIPT.general;
     const angleLabel = angle && HOOK_ANGLES[angle]?.label;
+    const prefix = [angleLabel && `[${angleLabel}]`, brandKit && '[Marka Kiti]'].filter(Boolean).join(' ');
     return {
-      title: angleLabel ? `${mock.title} (${angleLabel})` : mock.title,
+      title: prefix ? `${mock.title} (${prefix})` : mock.title,
       final_prompt: JSON.stringify(
-        angleLabel ? { ...mock.schema, description: `[${angleLabel}] ${mock.schema.description}` } : mock.schema,
+        prefix
+          ? { ...mock.schema, description: `${prefix} ${mock.schema.description}`, subject: { ...mock.schema.subject, character: { ...mock.schema.subject.character, description: brandKit?.characterDescription || mock.schema.subject.character.description } } }
+          : mock.schema,
       ),
     };
   }
@@ -196,7 +200,7 @@ export const generateVideoScript = async ({ caption, imageDescription, model, st
     jsonMode: true,
     messages: [
       { role: 'system', content: videoScriptSystem(MASTER_PROMPT_SCHEMA) },
-      { role: 'user', content: (isUgc ? ugcVideoScriptUser : generalVideoScriptUser)({ caption, imageDescription, model, angle }) },
+      { role: 'user', content: (isUgc ? ugcVideoScriptUser : generalVideoScriptUser)({ caption, imageDescription, model, angle, brandKit }) },
     ],
   });
 
@@ -219,10 +223,11 @@ const MOCK_CAROUSEL_SLIDES = [
 ];
 
 /** New: turns an idea into a 6-slide Instagram carousel plan. */
-export const generateCarouselPlan = async ({ idea, imageDescription }) => {
+export const generateCarouselPlan = async ({ idea, imageDescription, brandKit }) => {
   if (useMock('openai')) {
     await sleep(700);
-    return { slides: MOCK_CAROUSEL_SLIDES };
+    if (!brandKit) return { slides: MOCK_CAROUSEL_SLIDES };
+    return { slides: MOCK_CAROUSEL_SLIDES.map((slide, i) => (i === 0 ? { ...slide, headline: `[Marka Kiti] ${slide.headline}` } : slide)) };
   }
 
   const raw = await chat({
@@ -230,7 +235,7 @@ export const generateCarouselPlan = async ({ idea, imageDescription }) => {
     jsonMode: true,
     messages: [
       { role: 'system', content: CAROUSEL_PLAN_SYSTEM },
-      { role: 'user', content: carouselPlanUser({ idea, imageDescription }) },
+      { role: 'user', content: carouselPlanUser({ idea, imageDescription, brandKit }) },
     ],
   });
 
@@ -245,9 +250,12 @@ export const generateCarouselPlan = async ({ idea, imageDescription }) => {
 };
 
 /** New: turns an idea (and optional reference image) into a 3D character generation prompt. */
-export const generateCharacterPrompt = async ({ idea, imageDescription }) => {
+export const generateCharacterPrompt = async ({ idea, imageDescription, brandKit }) => {
   if (useMock('openai')) {
     await sleep(600);
+    if (brandKit?.characterDescription) {
+      return { title: 'Marka Kiti Karakteri', prompt: `${brandKit.characterDescription}; single centered subject, plain neutral background, full body visible, no other objects` };
+    }
     return {
       title: 'Zırhlı Gezgin Karakteri',
       prompt:
@@ -262,7 +270,7 @@ export const generateCharacterPrompt = async ({ idea, imageDescription }) => {
     jsonMode: true,
     messages: [
       { role: 'system', content: CHARACTER_PROMPT_SYSTEM },
-      { role: 'user', content: characterPromptUser({ idea, imageDescription }) },
+      { role: 'user', content: characterPromptUser({ idea, imageDescription, brandKit }) },
     ],
   });
 

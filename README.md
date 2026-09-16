@@ -73,6 +73,26 @@ In mock mode this content type can only show the placeholder preview image — a
 needs a live `FAL_API_KEY`, so the "İndir" button and the `<model-viewer>` stay hidden until then and
 a note explains why.
 
+## Marka Kiti (Brand Kit)
+
+One persistent, optional identity per member — reference image(s), a color palette, a tone/style
+instruction and a fixed recurring character description — managed from **Ayarlar → Marka Kiti**
+(`server/store.js`'s `getBrandKit`/`saveBrandKit`/`deleteBrandKit`, `GET`/`PUT`/`DELETE /api/brand-kit`).
+
+- It only ever applies when a job explicitly opts in via the **"Marka kitimi bu üretimde kullan"**
+  checkbox, which only appears once the kit actually has something in it. The checkbox is available
+  for all four content types.
+- Opting in injects the kit's tone/palette/character description into that job's prompts (image
+  prompt, video script, carousel plan, 3D character prompt — see `brandKitClause` in
+  `server/prompts.js`).
+- For **Instagram Carousel** and **3D Karakter** — the two types where uploading an image is
+  optional — opting in with no image uploaded for that job also falls back to the brand kit's own
+  reference image as the NanoBanana/Tripo3D input, so repeat content without a fresh photo still
+  edits a consistent reference instead of generating from a blank slate. Normal Video/UGC Reklam
+  always require their own upload, so this fallback never overrides a member's own photo.
+- The brand kit actually used is snapshotted onto the job at creation time, so editing or deleting
+  the kit afterwards never changes a job that's already running or already finished.
+
 ## Free credit system
 
 Prices and free-credit amounts aren't final, so this whole feature lives in one file,
@@ -138,7 +158,8 @@ dialog behind it) shows which providers are live and which are mocked. Add keys 
 | `GET` | `/api/auth/me` | Current session |
 | `GET` | `/api/status` | User, provider status, settings |
 | `GET`/`PUT` | `/api/settings` | Default model/aspect ratio for the video modes |
-| `POST` | `/api/jobs` | Start a run (`contentType`, `image` data URL or none, `idea`, `model`, `aspectRatio`, `variantCount` for Normal Video/UGC hook variants) |
+| `GET`/`PUT`/`DELETE` | `/api/brand-kit` | The member's Marka Kiti (reference images, palette, tone, character) |
+| `POST` | `/api/jobs` | Start a run (`contentType`, `image` data URL or none, `idea`, `model`, `aspectRatio`, `variantCount` for Normal Video/UGC hook variants, `useBrandKit`) |
 | `GET` | `/api/jobs`, `/api/jobs/:id` | Job state (steps, logs, results) |
 | `GET` | `/api/events` | SSE stream of this member's job updates |
 | `GET` | `/api/projects` | The member's projects |

@@ -18,6 +18,18 @@ const resolveRemoteImageUrl = async ({ publicUrl, filePath }) => {
 };
 
 /**
+ * Marka Kiti (Brand Kit): when no image was uploaded for this job and the member opted in,
+ * fall back to the brand kit's own reference image - so a carousel/3D job with no fresh photo
+ * still edits a consistent reference instead of generating from a blank slate every time.
+ * A job that did upload its own image always wins; the brand kit only fills a gap.
+ */
+const resolveReferenceImage = ({ filePath, publicUrl, brandKit }) => {
+  if (filePath || publicUrl) return { filePath, publicUrl };
+  const ref = brandKit?.referenceImages?.[0];
+  return ref ? { filePath: ref.filePath, publicUrl: ref.url } : { filePath: null, publicUrl: null };
+};
+
+/**
  * "Normal Video" and "UGC Reklam Videosu" share every step; only the prompt style differs.
  * style: 'ugc' | 'general'
  */
@@ -28,6 +40,7 @@ const runVideoPipeline = async (job, { filePath, publicUrl }, style) => {
   const idea = job.input.idea;
   const model = job.input.model || settings.model;
   const aspectRatio = job.input.aspectRatio || settings.aspectRatio;
+  const brandKit = job.input.brandKit || null;
 
   setStatus(job, 'running');
 
@@ -50,7 +63,7 @@ const runVideoPipeline = async (job, { filePath, publicUrl }, style) => {
     log(job, 'Referans görsel analiz edildi');
 
     setStep(job, 'image', 'running', 'Görsel prompt\'u hazırlanıyor');
-    const { image_prompt: imagePrompt } = await openai.generateImagePrompt({ caption: idea, imageDescription, style });
+    const { image_prompt: imagePrompt } = await openai.generateImagePrompt({ caption: idea, imageDescription, style, brandKit });
     await upsertProject(userId, imageKey, { imagePrompt });
     setResult(job, { imagePrompt });
     log(job, 'Görsel prompt\'u hazır');
@@ -75,7 +88,7 @@ const runVideoPipeline = async (job, { filePath, publicUrl }, style) => {
         setVariantStatus(job, variant.id, 'running');
 
         setVariantStep(job, variant.id, 'script', 'running', 'Yapılandırılmış video prompt\'u yazılıyor');
-        const script = await openai.generateVideoScript({ caption: idea, imageDescription, model, style, angle: variant.angle });
+        const script = await openai.generateVideoScript({ caption: idea, imageDescription, model, style, angle: variant.angle, brandKit });
         // "Format Prompt" node: the structured prompt travels to VEO3 as an escaped JSON string.
         const formattedPrompt = JSON.stringify(script.final_prompt);
         setVariantResult(job, variant.id, { title: script.title, finalPrompt: script.final_prompt });
@@ -144,6 +157,8 @@ const runCarouselPipeline = async (job, { filePath, publicUrl }) => {
   const userId = job.userId;
   const imageKey = job.imageKey;
   const idea = job.input.idea;
+  const brandKit = job.input.brandKit || null;
+  ({ filePath, publicUrl } = resolveReferenceImage({ filePath, publicUrl, brandKit }));
 
   setStatus(job, 'running');
 
@@ -164,7 +179,7 @@ const runCarouselPipeline = async (job, { filePath, publicUrl }) => {
     if (imageDescription) await upsertProject(userId, imageKey, { imageDescription });
 
     setStep(job, 'plan', 'running', 'Carousel planı yazılıyor');
-    const { slides: plan } = await openai.generateCarouselPlan({ idea, imageDescription });
+    const { slides: plan } = await openai.generateCarouselPlan({ idea, imageDescription, brandKit });
     log(job, `${plan.length} slaytlık plan hazır`);
     setStep(job, 'plan', 'done', `${plan.length} slayt planlandı`);
 
@@ -229,6 +244,8 @@ const runCharacterPipeline = async (job, { filePath, publicUrl }) => {
   const userId = job.userId;
   const imageKey = job.imageKey;
   const idea = job.input.idea;
+  const brandKit = job.input.brandKit || null;
+  ({ filePath, publicUrl } = resolveReferenceImage({ filePath, publicUrl, brandKit }));
 
   setStatus(job, 'running');
 
@@ -254,7 +271,7 @@ const runCharacterPipeline = async (job, { filePath, publicUrl }) => {
     }
 
     setStep(job, 'prompt', 'running', '3D karakter prompt\'u hazırlanıyor');
-    const { title, prompt } = await openai.generateCharacterPrompt({ idea, imageDescription });
+    const { title, prompt } = await openai.generateCharacterPrompt({ idea, imageDescription, brandKit });
     await upsertProject(userId, imageKey, { title, imagePrompt: prompt });
     setResult(job, { title, imagePrompt: prompt });
     log(job, `Karakter: ${title}`);
