@@ -41,6 +41,10 @@ export const config = {
     visionModel: process.env.OPENAI_VISION_MODEL || 'chatgpt-4o-latest',
     agentModel: process.env.OPENAI_AGENT_MODEL || 'gpt-4.1-mini',
     captionModel: process.env.OPENAI_CAPTION_MODEL || 'gpt-4o',
+    // Çoklu Dil Altyazı: a separate, deliberately cheap model for translating the primary
+    // caption into 2-3 extra languages - swap in whatever your account's cheapest chat
+    // model is (e.g. a "-mini" variant) once one is available to you.
+    captionTranslateModel: process.env.OPENAI_CAPTION_TRANSLATE_MODEL || 'gpt-4o-mini',
   },
 
   fal: {

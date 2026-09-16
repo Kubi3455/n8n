@@ -135,6 +135,18 @@
         <span>Marka kitimi bu üretimde kullan</span>
       </label>
 
+      <div class="field" id="caption-language-field">
+        <span>Ek dillerde altyazı (en fazla 3)</span>
+        <div class="format-checks">
+          <label><input type="checkbox" name="caption-language" value="en" /> English</label>
+          <label><input type="checkbox" name="caption-language" value="es" /> Spanish</label>
+          <label><input type="checkbox" name="caption-language" value="de" /> German</label>
+          <label><input type="checkbox" name="caption-language" value="fr" /> French</label>
+          <label><input type="checkbox" name="caption-language" value="pt" /> Portuguese</label>
+          <label><input type="checkbox" name="caption-language" value="ar" /> Arabic</label>
+        </div>
+      </div>
+
       <button id="start" class="primary" type="button" disabled>İçerik oluştur</button>
       <p id="compose-error" class="error" hidden></p>
     </section>
@@ -185,6 +197,7 @@
           <summary>Paylaşım metni</summary>
           <p id="out-carousel-caption"></p>
         </details>
+        <div id="carousel-translations"></div>
       </div>
 
       <!-- 3D Karakter çıktısı -->
@@ -207,6 +220,7 @@
             <summary>Karakter &amp; paylaşım metni</summary>
             <p id="out-character-title" class="mono"></p>
             <p id="out-character-caption"></p>
+            <div id="character-translations"></div>
           </details>
           <details>
             <summary>Görsel analizi</summary>

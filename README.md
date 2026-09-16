@@ -134,6 +134,21 @@ browser does, via a per-member API key generated from **Ayarlar → API / Webhoo
   reaches `completed` or `failed`, so a caller doesn't have to poll `GET /api/jobs/:id`. Sending it
   never blocks or fails the job itself; a delivery failure is only logged to that job's own log.
 
+## Çoklu Dil Altyazı/Caption
+
+Every content type's caption step can also produce the caption in **up to 3 additional languages**
+(English, Spanish, German, French, Portuguese, Arabic - pick from checkboxes in the compose panel).
+This translates the caption that was just written, rather than re-running the whole caption agent
+per language, and does it on a **separate, deliberately cheap model**
+(`OPENAI_CAPTION_TRANSLATE_MODEL`, default `gpt-4o-mini` - swap in whatever your account's
+cheapest chat model is) so it's never on the same cost footing as the main caption/script agents.
+
+- Available on all four content types since every one of them already has a caption step.
+- For Normal Video/UGC, translations are per hook variant (`variant.result.captionTranslations`),
+  matching that variant's own caption; Carousel/3D Karakter store one set on the project
+  (`captionTranslations`).
+- Not credit-gated - this is exactly what the cheap dedicated model is for.
+
 ## Free credit system
 
 Prices and free-credit amounts aren't final, so this whole feature lives in one file,
@@ -201,7 +216,7 @@ dialog behind it) shows which providers are live and which are mocked. Add keys 
 | `GET` | `/api/status` | User, provider status, settings |
 | `GET`/`PUT` | `/api/settings` | Default model/aspect ratio/webhook URL for the video modes |
 | `GET`/`PUT`/`DELETE` | `/api/brand-kit` | The member's Marka Kiti (reference images, palette, tone, character) |
-| `POST` | `/api/jobs` | Start a run (`contentType`, `image` data URL or none, `idea`, `model`, `aspectRatio`, `formats` array for Normal Video/UGC multi-format export, `variantCount` for hook variants, `useBrandKit`) |
+| `POST` | `/api/jobs` | Start a run (`contentType`, `image` data URL or none, `idea`, `model`, `aspectRatio`, `formats` array for Normal Video/UGC multi-format export, `variantCount` for hook variants, `useBrandKit`, `captionLanguages` array, up to 3 of `en`/`es`/`de`/`fr`/`pt`/`ar`) |
 | `GET` | `/api/jobs`, `/api/jobs/:id` | Job state (steps, logs, results) |
 | `GET` | `/api/events` | SSE stream of this member's job updates |
 | `GET` | `/api/projects` | The member's projects |

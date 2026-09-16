@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config, useMock } from '../config.js';
 import {
+  CAPTION_LANGUAGES,
   CAROUSEL_PLAN_SYSTEM,
   CHARACTER_PROMPT_SYSTEM,
   GENERAL_IMAGE_PROMPT_SYSTEM,
@@ -14,6 +15,7 @@ import {
   generalImagePromptUser,
   generalVideoScriptUser,
   socialCaptionUser,
+  translateCaptionUser,
   ugcImagePromptUser,
   ugcVideoScriptUser,
   videoScriptSystem,
@@ -298,4 +300,35 @@ export const writeSocialCaption = async ({ idea, title, contentType, angle }) =>
   const caption = raw.replace(/^["']|["']$/g, '').trim();
   // The prompt insists on <200 characters; enforce it here so the delivered text never breaks that promise.
   return caption.length > 200 ? `${caption.slice(0, 197).trimEnd()}...` : caption;
+};
+
+const MOCK_TRANSLATION_PREFIX = { en: '[EN]', es: '[ES]', de: '[DE]', fr: '[FR]', pt: '[PT]', ar: '[AR]' };
+
+/**
+ * Çoklu Dil Altyazı: translates an already-written caption into one more language, on the
+ * cheap `captionTranslateModel` - never the (pricier) main caption agent above.
+ */
+const translateCaption = async ({ caption, language }) => {
+  const languageName = CAPTION_LANGUAGES[language] || language;
+  if (useMock('openai')) {
+    await sleep(250);
+    return `${MOCK_TRANSLATION_PREFIX[language] || `[${language.toUpperCase()}]`} ${caption}`;
+  }
+
+  const raw = await chat({
+    model: config.openai.captionTranslateModel,
+    messages: [{ role: 'user', content: translateCaptionUser({ caption, languageName }) }],
+    temperature: 0.3,
+  });
+  const translated = raw.replace(/^["']|["']$/g, '').trim();
+  return translated.length > 200 ? `${translated.slice(0, 197).trimEnd()}...` : translated;
+};
+
+/** Runs translateCaption for every requested language in parallel: { [code]: text }. */
+export const translateCaptions = async ({ caption, languages }) => {
+  if (!languages?.length) return {};
+  const entries = await Promise.all(
+    languages.map(async (language) => [language, await translateCaption({ caption, language })]),
+  );
+  return Object.fromEntries(entries);
 };

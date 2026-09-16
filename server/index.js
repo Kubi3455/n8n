@@ -21,7 +21,7 @@ import { createServer, listenOnFreePort } from './http-server.js';
 import { bus, createJob, getJob, listJobs, log, restoreJobs, setStatus } from './jobs.js';
 import { requestJson } from './services/http.js';
 import { runPipeline } from './pipeline.js';
-import { HOOK_ANGLES, HOOK_ANGLE_ORDER } from './prompts.js';
+import { CAPTION_LANGUAGES, CAPTION_LANGUAGE_ORDER, HOOK_ANGLES, HOOK_ANGLE_ORDER } from './prompts.js';
 import {
   CONTENT_TYPES,
   OPTIONAL_IMAGE_TYPES,
@@ -279,12 +279,16 @@ const VARIANT_CONTENT_TYPES = new Set(['video', 'ugc']);
 const MAX_VARIANTS = HOOK_ANGLE_ORDER.length; // 5 - one per defined angle
 const SUPPORTED_FORMATS = ['16:9', '9:16', '1:1'];
 const MAX_FORMATS = SUPPORTED_FORMATS.length;
+// Çoklu Dil Altyazı: available on every content type (all four have a caption step), and
+// deliberately NOT credit-gated - it runs on a separate, cheap model precisely so it doesn't
+// need to be.
+const MAX_CAPTION_LANGUAGES = 3;
 
 app.post('/api/jobs', async (req, res) => {
   if (!requireAuth(req, res)) return;
   let reservation = { allowed: true, usedFreeCredit: false, count: 0 };
   try {
-    const { image, idea = '', model, aspectRatio, contentType, variantCount, useBrandKit, formats } = req.body;
+    const { image, idea = '', model, aspectRatio, contentType, variantCount, useBrandKit, formats, captionLanguages } = req.body;
     const type = CONTENT_TYPES[contentType] || CONTENT_TYPES.ugc;
 
     if (!OPTIONAL_IMAGE_TYPES.has(type) && !image) return res.json(400, { error: 'Bir görsel yükleyin' });
@@ -313,6 +317,10 @@ app.post('/api/jobs', async (req, res) => {
       : [];
     const resolvedFormats = requestedFormatList.length > 0 ? requestedFormatList : [aspectRatio || settings.aspectRatio];
     const requestedFormats = resolvedFormats.length;
+
+    const resolvedCaptionLanguages = Array.isArray(captionLanguages)
+      ? [...new Set(captionLanguages.filter((value) => CAPTION_LANGUAGE_ORDER.includes(value)))].slice(0, MAX_CAPTION_LANGUAGES)
+      : [];
 
     // Credit gate: reserve before any upload/pipeline work starts, so a request that will
     // be refused never touches disk or spends anything. Mock-mode runs never reach here
@@ -368,12 +376,16 @@ app.post('/api/jobs', async (req, res) => {
         aspectRatio: aspectRatio || settings.aspectRatio,
         formats: resolvedFormats,
         brandKit: appliedBrandKit,
+        captionLanguages: resolvedCaptionLanguages,
       },
     });
     if (downgraded) log(job, `Ücretsiz kredi: "${requestedModel}" yerine "${effectiveModel}" kullanılıyor`, 'warn');
     if (requestedVariants > 1) log(job, `${requestedVariants} hook varyantı üretilecek: ${variantSpecs.map((v) => v.angleLabel).join(', ')}`);
     if (requestedFormats > 1) log(job, `${requestedFormats} format render edilecek: ${resolvedFormats.join(', ')}`);
     if (appliedBrandKit) log(job, 'Marka kiti bu üretime uygulandı');
+    if (resolvedCaptionLanguages.length > 0) {
+      log(job, `Ek dillerde altyazı üretilecek: ${resolvedCaptionLanguages.map((code) => CAPTION_LANGUAGES[code]).join(', ')}`);
+    }
 
     // Fire and forget: progress reaches the browser over SSE. Any variant that didn't finish
     // (or the whole job, for content types without variants) refunds its own credit - free

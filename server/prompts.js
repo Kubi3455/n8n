@@ -400,3 +400,34 @@ Write the caption text for this ${kind}.
 ### FINAL OUTPUT FORMAT (no markdown formatting):
 DO NOT return any explanations. Only return the caption text.`;
 };
+
+// ============================================================================
+// Çoklu Dil Altyazı/Caption - translates the primary caption (above) into 2-3 more
+// languages with a separate, cheap model, so multi-language support never touches the
+// (more expensive) main caption agent.
+// ============================================================================
+
+export const CAPTION_LANGUAGES = {
+  en: 'English',
+  es: 'Spanish',
+  de: 'German',
+  fr: 'French',
+  pt: 'Portuguese',
+  ar: 'Arabic',
+};
+
+export const CAPTION_LANGUAGE_ORDER = ['en', 'es', 'de', 'fr', 'pt', 'ar'];
+
+export const translateCaptionUser = ({ caption, languageName }) => `Translate the following ready-to-post social media caption into ${languageName}.
+
+Caption:
+"""
+${caption}
+"""
+
+Rules:
+- Keep it natural and native-sounding in ${languageName}, not a literal word-for-word translation.
+- Preserve the tone, any emoji, and any hashtags (translate hashtag words too, unless they're a
+  brand name or already common in ${languageName}).
+- Keep it under 200 characters, matching the original's length as closely as natural phrasing allows.
+- Output ONLY the translated caption text - no quotes, no explanations, no language label.`;

@@ -44,6 +44,7 @@ const runVideoPipeline = async (job, { filePath, publicUrl }, style) => {
   // existed (or by an API/webhook caller that only ever sends `aspectRatio`).
   const formats = job.input.formats?.length ? job.input.formats : [job.input.aspectRatio || settings.aspectRatio];
   const brandKit = job.input.brandKit || null;
+  const captionLanguages = job.input.captionLanguages || [];
 
   setStatus(job, 'running');
 
@@ -127,6 +128,13 @@ const runVideoPipeline = async (job, { filePath, publicUrl }, style) => {
         const caption = await openai.writeSocialCaption({ idea, title: script.title, contentType: job.contentType, angle: variant.angle });
         setVariantResult(job, variant.id, { caption });
         log(job, `[${label}] Paylaşım metni hazır (${caption.length} karakter)`);
+        // Çoklu Dil Altyazı: translates the caption just written, on the cheap model - never
+        // re-runs the (pricier) main caption agent per language.
+        if (captionLanguages.length > 0) {
+          const captionTranslations = await openai.translateCaptions({ caption, languages: captionLanguages });
+          setVariantResult(job, variant.id, { captionTranslations });
+          log(job, `[${label}] ${captionLanguages.length} dilde altyazı hazır (${captionLanguages.join(', ')})`);
+        }
         setVariantStep(job, variant.id, 'caption', 'done');
 
         setVariantStatus(job, variant.id, 'done');
@@ -175,6 +183,7 @@ const runCarouselPipeline = async (job, { filePath, publicUrl }) => {
   const imageKey = job.imageKey;
   const idea = job.input.idea;
   const brandKit = job.input.brandKit || null;
+  const captionLanguages = job.input.captionLanguages || [];
   ({ filePath, publicUrl } = resolveReferenceImage({ filePath, publicUrl, brandKit }));
 
   setStatus(job, 'running');
@@ -240,6 +249,12 @@ const runCarouselPipeline = async (job, { filePath, publicUrl }) => {
     await upsertProject(userId, imageKey, { title, caption, status: PROJECT_STATUS.ready });
     setResult(job, { title, caption });
     log(job, `Paylaşım metni hazır (${caption.length} karakter)`);
+    if (captionLanguages.length > 0) {
+      const captionTranslations = await openai.translateCaptions({ caption, languages: captionLanguages });
+      await upsertProject(userId, imageKey, { captionTranslations });
+      setResult(job, { captionTranslations });
+      log(job, `${captionLanguages.length} dilde altyazı hazır (${captionLanguages.join(', ')})`);
+    }
     setStep(job, 'caption', 'done');
 
     setStatus(job, 'completed');
@@ -262,6 +277,7 @@ const runCharacterPipeline = async (job, { filePath, publicUrl }) => {
   const imageKey = job.imageKey;
   const idea = job.input.idea;
   const brandKit = job.input.brandKit || null;
+  const captionLanguages = job.input.captionLanguages || [];
   ({ filePath, publicUrl } = resolveReferenceImage({ filePath, publicUrl, brandKit }));
 
   setStatus(job, 'running');
@@ -315,6 +331,12 @@ const runCharacterPipeline = async (job, { filePath, publicUrl }) => {
     await upsertProject(userId, imageKey, { caption });
     setResult(job, { caption });
     log(job, `Paylaşım metni hazır (${caption.length} karakter)`);
+    if (captionLanguages.length > 0) {
+      const captionTranslations = await openai.translateCaptions({ caption, languages: captionLanguages });
+      await upsertProject(userId, imageKey, { captionTranslations });
+      setResult(job, { captionTranslations });
+      log(job, `${captionLanguages.length} dilde altyazı hazır (${captionLanguages.join(', ')})`);
+    }
     setStep(job, 'caption', 'done');
 
     setStatus(job, 'completed');

@@ -162,6 +162,17 @@ const applyContentType = (type) => {
 
 const selectedFormats = () => [...document.querySelectorAll('input[name="format"]:checked')].map((box) => box.value);
 
+// ---------- Çoklu Dil Altyazı: up to 3 extra languages, available on every content type ----
+const MAX_CAPTION_LANGUAGES = 3;
+const selectedCaptionLanguages = () => [...document.querySelectorAll('input[name="caption-language"]:checked')].map((box) => box.value);
+
+const enforceCaptionLanguageLimit = () => {
+  const checked = selectedCaptionLanguages().length;
+  for (const box of document.querySelectorAll('input[name="caption-language"]')) {
+    box.disabled = !box.checked && checked >= MAX_CAPTION_LANGUAGES;
+  }
+};
+
 // ---------- Hook/Varyant Testi + Çoklu Format Export: see server/prompts.js (HOOK_ANGLES), ----
 // server/pipeline.js. N varyant × M format = N×M kat maliyet; only worth showing while a real
 // (non-mocked) run would actually charge for it.
@@ -258,6 +269,7 @@ const start = async () => {
         formats: selectedFormats(),
         variantCount: Number($('variant-count').value),
         useBrandKit: $('use-brand-kit').checked,
+        captionLanguages: selectedCaptionLanguages(),
       }),
     });
     state.activeJobId = job.id;
@@ -309,6 +321,17 @@ const setWatermarks = (selector, visible) => {
 // ---------- run view: video outputs (shared image + per-hook-variant results) -----------
 const VARIANT_STATUS_LABELS = { pending: 'bekliyor', running: 'çalışıyor', done: 'tamamlandı', failed: 'hata' };
 
+// ---------- Çoklu Dil Altyazı: rendering the translated captions any content type produced --
+const CAPTION_LANGUAGE_NAMES = { en: 'English', es: 'Spanish', de: 'German', fr: 'French', pt: 'Portuguese', ar: 'Arabic' };
+const renderCaptionTranslationsHtml = (translations) => {
+  const entries = Object.entries(translations || {});
+  if (entries.length === 0) return '';
+  const items = entries
+    .map(([code, text]) => `<p class="caption-translation"><strong>${CAPTION_LANGUAGE_NAMES[code] || code}:</strong> ${escapeHtml(text)}</p>`)
+    .join('');
+  return `<details><summary>Diğer diller (${entries.length})</summary>${items}</details>`;
+};
+
 const renderVariantCard = (variant, usedFreeCredit) => {
   const { result } = variant;
   const stepsHtml = variant.steps
@@ -341,6 +364,7 @@ const renderVariantCard = (variant, usedFreeCredit) => {
     <div class="variant-videos">${videosHtml}</div>
     ${result.title ? `<p class="mono variant-title">${escapeHtml(result.title)}</p>` : ''}
     ${result.caption ? `<p class="variant-caption">${escapeHtml(result.caption)}</p>` : ''}
+    ${renderCaptionTranslationsHtml(result.captionTranslations)}
     ${result.finalPrompt ? `<details><summary>Video prompt'u</summary><pre>${escapeHtml(result.finalPrompt)}</pre></details>` : ''}
     <div class="variant-downloads">${downloadsHtml}</div>
   </div>`;
@@ -510,6 +534,7 @@ const renderCarouselOutputs = async (job) => {
 
   $('carousel-count').textContent = `${slides.length} slayt`;
   $('out-carousel-caption').textContent = result.caption || '';
+  $('carousel-translations').innerHTML = renderCaptionTranslationsHtml(result.captionTranslations);
 
   const grid = $('carousel-grid');
   grid.innerHTML = '';
@@ -586,6 +611,7 @@ const renderCharacterOutputs = (job) => {
 
   $('out-character-title').textContent = result.title || '';
   $('out-character-caption').textContent = result.caption || '';
+  $('character-translations').innerHTML = renderCaptionTranslationsHtml(result.captionTranslations);
   $('out-character-description').textContent = result.imageDescription || '';
   $('out-character-prompt').textContent = result.imagePrompt || '';
 
@@ -996,6 +1022,9 @@ const init = async () => {
       updateVariantCostNote();
       updateStartEnabled();
     });
+  }
+  for (const box of document.querySelectorAll('input[name="caption-language"]')) {
+    box.addEventListener('change', enforceCaptionLanguageLimit);
   }
   wireBrandKit();
   wireFeedback();

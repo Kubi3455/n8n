@@ -92,6 +92,7 @@ export const upsertProject = async (userId, imageKey, values) => {
       imagePrompt: '',
       title: '',
       caption: '',
+      captionTranslations: {}, // Çoklu Dil Altyazı: { [languageCode]: translatedCaption } for carousel/character3d; video/ugc keep theirs per-variant
       finalPrompt: '',
       videoUrl: '',
       variants: [], // video/ugc only, when >1 hook variant was requested: [{ id, angle, angleLabel, status, title, caption, videoUrl, videoUrls: [{format, url}], finalPrompt }]
