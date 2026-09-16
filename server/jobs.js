@@ -10,21 +10,17 @@ const MAX_JOBS = 100;
 export const bus = new EventEmitter();
 bus.setMaxListeners(0);
 
-// Each content type walks through its own stages.
+// Each content type walks through its own stages. For 'video'/'ugc' these are only the
+// SHARED stages (idea + image are produced once); the per-variant stages live in
+// VARIANT_STEP_DEFINITIONS below and are forked once per hook/angle (see Hook/Varyant Testi).
 const STEP_DEFINITIONS_BY_TYPE = {
   video: [
     { id: 'collect', title: 'Fikir ve görsel toplama' },
     { id: 'image', title: 'Görsel üretimi' },
-    { id: 'script', title: 'Video senaryosu' },
-    { id: 'video', title: 'Video render' },
-    { id: 'caption', title: 'Paylaşım metni' },
   ],
   ugc: [
     { id: 'collect', title: 'Fikir ve görsel toplama' },
     { id: 'image', title: 'Görsel üretimi' },
-    { id: 'script', title: 'Video senaryosu' },
-    { id: 'video', title: 'Video render' },
-    { id: 'caption', title: 'Paylaşım metni' },
   ],
   carousel: [
     { id: 'collect', title: 'Konu toplama' },
@@ -41,6 +37,13 @@ const STEP_DEFINITIONS_BY_TYPE = {
 };
 
 export const getStepDefinitions = (contentType) => STEP_DEFINITIONS_BY_TYPE[contentType] || STEP_DEFINITIONS_BY_TYPE.ugc;
+
+// Each hook/angle variant of a video/ugc job walks through its own copy of these three.
+export const VARIANT_STEP_DEFINITIONS = [
+  { id: 'script', title: 'Video senaryosu' },
+  { id: 'video', title: 'Video render' },
+  { id: 'caption', title: 'Paylaşım metni' },
+];
 
 const jobs = new Map();
 let persistChain = Promise.resolve();
@@ -78,7 +81,13 @@ const emit = (job, event = 'job') => {
   persist();
 };
 
-export const createJob = ({ userId, imageKey, contentType, input, usedFreeCredit = false }) => {
+/**
+ * `variants`, when given, is a list of `{ id, angle, angleLabel }` resolved by the caller
+ * (index.js, using HOOK_ANGLE_ORDER/HOOK_ANGLES from prompts.js) - jobs.js stays agnostic of
+ * what an "angle" actually means and just gives each one its own step/result bookkeeping.
+ * Content types other than video/ugc never pass this and get the old single-`steps` shape.
+ */
+export const createJob = ({ userId, imageKey, contentType, input, usedFreeCredit = false, variants }) => {
   const job = {
     id: crypto.randomUUID(),
     userId,
@@ -90,6 +99,12 @@ export const createJob = ({ userId, imageKey, contentType, input, usedFreeCredit
     updatedAt: new Date().toISOString(),
     input,
     steps: getStepDefinitions(contentType).map((step) => ({ ...step, status: 'pending', detail: '' })),
+    variants: (variants || []).map((variant) => ({
+      ...variant,
+      status: 'pending',
+      steps: VARIANT_STEP_DEFINITIONS.map((step) => ({ ...step, status: 'pending', detail: '' })),
+      result: {},
+    })),
     logs: [],
     result: { slides: [] },
     error: null,
@@ -137,4 +152,35 @@ export const setStatus = (job, status, error = null) => {
   job.status = status;
   job.error = error;
   emit(job, 'status');
+};
+
+// ---------- Hook/Varyant Testi: per-variant equivalents of setStep/setResult/setStatus ----
+
+const findVariant = (job, variantId) => job.variants.find((variant) => variant.id === variantId);
+
+export const setVariantStep = (job, variantId, stepId, status, detail = '') => {
+  const variant = findVariant(job, variantId);
+  if (!variant) return;
+  const step = variant.steps.find((candidate) => candidate.id === stepId);
+  if (!step) return;
+  step.status = status;
+  if (detail) step.detail = detail;
+  if (status === 'running') step.startedAt = new Date().toISOString();
+  if (status === 'done' || status === 'failed') step.finishedAt = new Date().toISOString();
+  emit(job, 'variant-step');
+};
+
+export const setVariantResult = (job, variantId, patch) => {
+  const variant = findVariant(job, variantId);
+  if (!variant) return;
+  Object.assign(variant.result, patch);
+  emit(job, 'variant-result');
+};
+
+export const setVariantStatus = (job, variantId, status, error = null) => {
+  const variant = findVariant(job, variantId);
+  if (!variant) return;
+  variant.status = status;
+  if (error) variant.error = error;
+  emit(job, 'variant-status');
 };

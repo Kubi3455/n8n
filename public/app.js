@@ -9,7 +9,7 @@ const CONTENT_TYPES = {
     dropzoneHint: 'veya seçmek için tıkla · PNG, JPG, WEBP · max 20 MB',
     imageRequired: true,
     videoOptions: true,
-    steps: ['Fikir ve görsel toplama', 'Görsel üretimi', 'Video senaryosu', 'Video render', 'Paylaşım metni'],
+    steps: ['Fikir ve görsel toplama', 'Görsel üretimi'],
   },
   ugc: {
     label: 'UGC Reklam',
@@ -19,7 +19,7 @@ const CONTENT_TYPES = {
     dropzoneHint: 'veya seçmek için tıkla · PNG, JPG, WEBP · max 20 MB',
     imageRequired: true,
     videoOptions: true,
-    steps: ['Fikir ve görsel toplama', 'Görsel üretimi', 'Video senaryosu', 'Video render', 'Paylaşım metni'],
+    steps: ['Fikir ve görsel toplama', 'Görsel üretimi'],
   },
   carousel: {
     label: 'Instagram Carousel',
@@ -104,6 +104,7 @@ const renderCredits = (credits) => {
   pill.hidden = false;
   pill.textContent = `${credits.remaining} ücretsiz kredi`;
   pill.classList.toggle('low', credits.remaining === 0);
+  updateVariantCostNote();
 };
 
 const refreshCredits = async () => {
@@ -146,9 +147,22 @@ const applyContentType = (type) => {
   $('idea-label').textContent = spec.ideaLabel;
   $('idea').placeholder = spec.ideaPlaceholder;
   $('video-options').hidden = !spec.videoOptions;
+  $('variant-field').hidden = !spec.videoOptions;
+  if (!spec.videoOptions) $('variant-count').value = '1';
 
+  updateVariantCostNote();
   updateStartEnabled();
   emptyRun();
+};
+
+// ---------- Hook/Varyant Testi: see server/prompts.js (HOOK_ANGLES) and pipeline.js --------
+/** N varyant = N kat maliyet; only worth showing while a real (non-mocked) run would charge. */
+const updateVariantCostNote = () => {
+  const note = $('variant-cost-note');
+  const count = Number($('variant-count').value);
+  const costs = state.credits?.enabled && state.credits.appliesNow;
+  note.hidden = count <= 1 || !costs;
+  if (!note.hidden) note.textContent = `${count} varyant = ${count} kredi (her varyant ayrı video render eder)`;
 };
 
 const updateStartEnabled = () => {
@@ -226,6 +240,7 @@ const start = async () => {
         idea: $('idea').value,
         model: $('model').value,
         aspectRatio: $('aspect').value,
+        variantCount: Number($('variant-count').value),
       }),
     });
     state.activeJobId = job.id;
@@ -274,10 +289,39 @@ const setWatermarks = (selector, visible) => {
   for (const badge of document.querySelectorAll(selector)) badge.hidden = !visible;
 };
 
-// ---------- run view: video outputs ------------------------------------------
+// ---------- run view: video outputs (shared image + per-hook-variant results) -----------
+const VARIANT_STATUS_LABELS = { pending: 'bekliyor', running: 'çalışıyor', done: 'tamamlandı', failed: 'hata' };
+
+const renderVariantCard = (variant, usedFreeCredit) => {
+  const { result } = variant;
+  const stepsHtml = variant.steps
+    .map((step) => `<li class="variant-step ${step.status}">
+      <span class="variant-step-dot"></span>
+      <span>${step.title}${step.detail ? ` — ${escapeHtml(step.detail)}` : ''}</span>
+    </li>`)
+    .join('');
+
+  return `<div class="variant-card">
+    <div class="variant-head">
+      <strong>${escapeHtml(variant.angleLabel || 'Varyant')}</strong>
+      <span class="badge ${variant.status}">${VARIANT_STATUS_LABELS[variant.status] || variant.status}</span>
+    </div>
+    <ol class="variant-steps">${stepsHtml}</ol>
+    <div class="watermark-frame">
+      <video class="variant-video" ${result.videoUrl ? `src="${result.videoUrl}"` : ''} controls playsinline ${result.videoUrl ? '' : 'hidden'}></video>
+      <span class="watermark-badge" ${usedFreeCredit && result.videoUrl ? '' : 'hidden'}>ÜCRETSİZ DENEME</span>
+    </div>
+    ${result.title ? `<p class="mono variant-title">${escapeHtml(result.title)}</p>` : ''}
+    ${result.caption ? `<p class="variant-caption">${escapeHtml(result.caption)}</p>` : ''}
+    ${result.finalPrompt ? `<details><summary>Video prompt'u</summary><pre>${escapeHtml(result.finalPrompt)}</pre></details>` : ''}
+    ${result.videoUrl ? `<a class="ghost variant-download" href="${result.videoUrl}" download>Videoyu indir</a>` : ''}
+  </div>`;
+};
+
 const renderVideoOutputs = (job) => {
   const { result } = job;
-  const hasAnything = result.imageDescription || result.editedImageUrl || result.videoUrl;
+  const hasVariants = (job.variants || []).length > 0;
+  const hasAnything = result.imageDescription || result.editedImageUrl || hasVariants;
   $('outputs-video').hidden = !hasAnything;
   $('outputs-carousel').hidden = true;
   $('outputs-character3d').hidden = true;
@@ -288,18 +332,14 @@ const renderVideoOutputs = (job) => {
   $('out-image-empty').hidden = Boolean(result.editedImageUrl);
   if (result.editedImageUrl && image.src !== result.editedImageUrl) image.src = result.editedImageUrl;
 
-  const video = $('out-video');
-  video.hidden = !result.videoUrl;
-  $('out-video-empty').hidden = Boolean(result.videoUrl);
-  if (result.videoUrl && video.src !== result.videoUrl) video.src = result.videoUrl;
-
-  $('out-title').textContent = result.title || '';
-  $('out-caption').textContent = result.caption || '';
   $('out-description').textContent = result.imageDescription || '';
   $('out-image-prompt').textContent = result.imagePrompt || '';
-  $('out-final-prompt').textContent = result.finalPrompt || '';
 
-  setWatermarks('#outputs-video [data-watermark]', job.usedFreeCredit);
+  setWatermarks('#outputs-video > .output-grid [data-watermark]', job.usedFreeCredit);
+
+  $('variant-grid').innerHTML = (job.variants || [])
+    .map((variant) => renderVariantCard(variant, job.usedFreeCredit))
+    .join('');
 };
 
 // ---------- run view: carousel outputs (client-side text compositing) --------
@@ -549,6 +589,7 @@ const emptyRun = () => {
   $('outputs-video').hidden = true;
   $('outputs-carousel').hidden = true;
   $('outputs-character3d').hidden = true;
+  $('variant-grid').innerHTML = '';
   $('log').innerHTML = '';
   $('steps').innerHTML = spec.steps
     .map((title, index) => `<li class="step pending"><span class="step-index">${index + 1}</span><span class="step-title">${title}</span><span></span></li>`)
@@ -586,7 +627,7 @@ const loadProjects = async () => {
       const thumb = projectThumb(project);
       return `<tr>
       <td>${thumb ? `<img class="row-thumb" src="${thumb}" alt="" loading="lazy" />` : '—'}</td>
-      <td><span class="type-badge">${PROJECT_TYPE_LABELS[project.contentType] || project.contentType}</span></td>
+      <td><span class="type-badge">${PROJECT_TYPE_LABELS[project.contentType] || project.contentType}${project.variants?.length > 1 ? ` · ${project.variants.length}x` : ''}</span></td>
       <td>${escapeHtml(project.title || '—')}</td>
       <td class="caption">${escapeHtml(project.caption || project.idea || '—')}</td>
       <td><span class="badge ${project.status}">${STATUS_BADGES[project.status] || project.status}</span></td>
@@ -751,6 +792,7 @@ const init = async () => {
   applyContentType('video');
 
   $('start').addEventListener('click', start);
+  $('variant-count').addEventListener('change', updateVariantCostNote);
   const openSettings = () => {
     renderSettingsForm();
     if (state.providers) renderProviderStatus(state.providers);

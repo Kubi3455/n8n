@@ -97,32 +97,34 @@ export const grantSignupCredits = (userId) => withCredits((all) => {
 export const getCredits = async (userId) => (await readJsonFile(CREDITS_FILE, {}))[userId] || emptyRecord();
 
 /**
- * Atomically checks and reserves one free credit for a job that is about to run against a
- * real (non-mocked) provider. Returns { usedFreeCredit: false } straight away when the
- * feature is disabled or the run is fully mocked - mock mode stays unlimited regardless of
- * balance. Never throws; the caller decides what to do with `allowed: false`.
+ * Atomically checks and reserves `count` free credits (default 1) for a job that is about
+ * to run against a real (non-mocked) provider. All-or-nothing: a job needing N credits either
+ * gets all N or none, so it never silently runs fewer hook variants than requested. Returns
+ * { usedFreeCredit: false } straight away when the feature is disabled or the run is fully
+ * mocked - mock mode stays unlimited regardless of balance. Never throws; the caller decides
+ * what to do with `allowed: false`.
  */
-export const reserve = async ({ userId, isFullyMocked }) => {
-  if (!CREDIT_CONFIG.enabled || isFullyMocked) return { allowed: true, usedFreeCredit: false };
+export const reserve = async ({ userId, isFullyMocked, count = 1 }) => {
+  if (!CREDIT_CONFIG.enabled || isFullyMocked) return { allowed: true, usedFreeCredit: false, count: 0 };
 
   return withCredits((all) => {
     const record = all[userId] || emptyRecord();
-    if (record.freeCreditsRemaining <= 0) {
+    if (record.freeCreditsRemaining < count) {
       all[userId] = record;
-      return { allowed: false, usedFreeCredit: false, remaining: 0 };
+      return { allowed: false, usedFreeCredit: false, remaining: record.freeCreditsRemaining, needed: count };
     }
-    record.freeCreditsRemaining -= 1;
-    addHistory(record, { type: 'consume' });
+    record.freeCreditsRemaining -= count;
+    addHistory(record, { type: 'consume', amount: count });
     all[userId] = record;
-    return { allowed: true, usedFreeCredit: true, remaining: record.freeCreditsRemaining };
+    return { allowed: true, usedFreeCredit: true, remaining: record.freeCreditsRemaining, count };
   });
 };
 
-/** Gives a credit back when a job that reserved one failed before producing anything. */
-export const refund = async (userId, reason = 'job failed') => withCredits((all) => {
+/** Gives `count` credits back (default 1) when a job that reserved them didn't earn its keep. */
+export const refund = async (userId, reason = 'job failed', count = 1) => withCredits((all) => {
   const record = all[userId] || emptyRecord();
-  record.freeCreditsRemaining += 1;
-  addHistory(record, { type: 'refund', reason });
+  record.freeCreditsRemaining += count;
+  addHistory(record, { type: 'refund', reason, amount: count });
   all[userId] = record;
   return record;
 });

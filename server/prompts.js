@@ -157,7 +157,7 @@ ${caption || '(none provided)'}
 - **Reference image description:**
 ${imageDescription}`;
 
-export const ugcVideoScriptUser = ({ caption, imageDescription, model }) => `Create a UGC-style video prompt using both the reference image and the user description.
+export const ugcVideoScriptUser = ({ caption, imageDescription, model, angle }) => `Create a UGC-style video prompt using both the reference image and the user description.
 
 **Inputs**
 - User description (optional):
@@ -168,7 +168,7 @@ export const ugcVideoScriptUser = ({ caption, imageDescription, model }) => `Cre
 **Rules**
 - Keep the style casual, authentic, and realistic. Avoid studio-like or cinematic language.
 - Default model: \`${model || 'veo3_fast'}\`.
-- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.`;
+- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.${angleClause(angle)}`;
 
 // ============================================================================
 // Normal Video - general purpose, style follows whatever the idea calls for.
@@ -210,7 +210,7 @@ ${caption || '(none provided)'}
 - **Reference image description:**
 ${imageDescription}`;
 
-export const generalVideoScriptUser = ({ caption, imageDescription, model }) => `Create a video prompt using both the reference image and the user's idea below.
+export const generalVideoScriptUser = ({ caption, imageDescription, model, angle }) => `Create a video prompt using both the reference image and the user's idea below.
 
 **Inputs**
 - User idea:
@@ -221,7 +221,45 @@ export const generalVideoScriptUser = ({ caption, imageDescription, model }) => 
 **Rules**
 - Choose whichever style, camera work and mood best serve this specific idea - cinematic, photorealistic, stylized, gritty or elegant. Do not default to one look; let the idea decide.
 - Default model: \`${model || 'veo3_fast'}\`.
-- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.`;
+- Output only **one JSON object** with the keys: \`title\` and \`final_prompt\`.${angleClause(angle)}`;
+
+// ============================================================================
+// Hook/Varyant Testi - the same idea, opened 3-5 different ways. Each angle steers only
+// the hook/opening beat; the underlying idea and visual stay the same.
+// ============================================================================
+
+export const HOOK_ANGLES = {
+  stat: {
+    label: 'Şaşırtıcı istatistik',
+    instruction: 'Open with a surprising, concrete-sounding statistic or number related to the topic (plausible, not fabricated as fact) to stop the scroll in the first beat.',
+  },
+  question: {
+    label: 'Soru sorma',
+    instruction: 'Open with a direct, provocative question aimed straight at the viewer - one the rest of the video answers.',
+  },
+  objection: {
+    label: 'Doğrudan itiraz',
+    instruction: 'Open by naming a common objection or skepticism the viewer might have, then directly challenging it.',
+  },
+  story: {
+    label: 'Hikaye anlatımı',
+    instruction: 'Open with a one-line personal or narrative moment ("I used to...", "Last week...") that pulls the viewer into a small story.',
+  },
+  bold_claim: {
+    label: 'Cesur iddia',
+    instruction: 'Open with a bold, confident claim or promise that creates curiosity about how it could possibly be true.',
+  },
+};
+
+// Fixed, deterministic order: variant N picks the first N angles from this list.
+export const HOOK_ANGLE_ORDER = ['stat', 'question', 'objection', 'story', 'bold_claim'];
+
+const angleClause = (angle) => {
+  const spec = HOOK_ANGLES[angle];
+  return spec
+    ? `\n\n**Hook angle for this variant - "${spec.label}":**\n${spec.instruction}\nLet this angle shape the opening beat of \`description\`, the \`ending\`'s setup, and \`subject.character.lip_sync_line\`/\`audio.voiceover.line\` if either is used. The rest of the schema still reflects the same underlying idea.`
+    : '';
+};
 
 // Shared by both video modes - only the user message above differs.
 export const videoScriptSystem = (masterSchema) => `system_prompt:
@@ -324,17 +362,20 @@ Produce the { title, prompt } object now, following the system rules exactly.`;
 // Shared final step: a ready-to-copy caption for whatever was produced.
 // ============================================================================
 
-export const socialCaptionUser = ({ idea, title, contentType }) => {
+export const socialCaptionUser = ({ idea, title, contentType, angle }) => {
   const kind = contentType === 'carousel'
     ? 'Instagram carousel post'
     : contentType === 'character3d'
       ? '3D character model reveal post'
       : 'short vertical video';
+  const angleNote = angle && HOOK_ANGLES[angle]
+    ? `\nThis caption is for the "${HOOK_ANGLES[angle].label}" hook variant - open the caption's first line with that same angle so it matches the video.`
+    : '';
   return `You are writing a ready-to-post social media caption for a ${kind} - not inventing a new concept, just captioning the one already made.
 ---
 ### CONTEXT:
 Content idea: ${idea || '(none provided)'}
-Title/hook used: ${title}
+Title/hook used: ${title}${angleNote}
 
 Write the caption text for this ${kind}.
 ---

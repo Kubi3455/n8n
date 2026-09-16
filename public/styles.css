@@ -193,6 +193,28 @@ summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 details > *:not(summary) { margin-top: 8px; }
 pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text); max-height: 260px; overflow: auto; }
 
+.variant-cost-note { color: var(--warn); font-size: 11px; }
+
+.variant-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.variant-card {
+  display: grid; gap: 8px; padding: 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2);
+}
+.variant-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.variant-head strong { font-size: 13px; }
+.variant-steps { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.variant-step { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--muted); }
+.variant-step-dot { width: 7px; height: 7px; border-radius: 50%; background: #333c4d; flex-shrink: 0; }
+.variant-step.running .variant-step-dot { background: var(--accent); }
+.variant-step.running { color: var(--text); }
+.variant-step.done .variant-step-dot { background: var(--ok); }
+.variant-step.failed .variant-step-dot { background: var(--err); }
+.variant-step.failed { color: var(--err); }
+.variant-card video { width: 100%; border-radius: 8px; background: #000; display: block; }
+.variant-title { font-size: 12px; }
+.variant-caption { font-size: 13px; }
+.variant-download { text-align: center; text-decoration: none; font-size: 12px; padding: 7px; }
+
 .character3d-card {
   display: grid; gap: 12px;
   padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2);

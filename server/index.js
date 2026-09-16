@@ -8,6 +8,7 @@ import * as credits from './credits.js'; // self-contained; see server/credits.j
 import { createServer, listenOnFreePort } from './http-server.js';
 import { bus, createJob, getJob, listJobs, log, restoreJobs, setStatus } from './jobs.js';
 import { runPipeline } from './pipeline.js';
+import { HOOK_ANGLES, HOOK_ANGLE_ORDER } from './prompts.js';
 import { CONTENT_TYPES, OPTIONAL_IMAGE_TYPES, deleteProject, getSettings, listProjects, saveSettings } from './store.js';
 
 const app = createServer({
@@ -130,24 +131,48 @@ app.get('/api/jobs/:id', (req, res) => {
   res.json(200, job);
 });
 
+// Only Normal Video and UGC Reklam support hook/angle variants today.
+const VARIANT_CONTENT_TYPES = new Set(['video', 'ugc']);
+const MAX_VARIANTS = HOOK_ANGLE_ORDER.length; // 5 - one per defined angle
+
 app.post('/api/jobs', async (req, res) => {
   if (!requireAuth(req, res)) return;
-  let reservation = { allowed: true, usedFreeCredit: false };
+  let reservation = { allowed: true, usedFreeCredit: false, count: 0 };
   try {
-    const { image, idea = '', model, aspectRatio, contentType } = req.body;
+    const { image, idea = '', model, aspectRatio, contentType, variantCount } = req.body;
     const type = CONTENT_TYPES[contentType] || CONTENT_TYPES.ugc;
 
     if (!OPTIONAL_IMAGE_TYPES.has(type) && !image) return res.json(400, { error: 'Bir görsel yükleyin' });
     if (!String(idea).trim() && !image) return res.json(400, { error: 'Bir konu ya da fikir yazın' });
+
+    // Hook/Varyant Testi: 1-5 variants, each its own script+video+caption. N variants = N
+    // times the real-provider cost, so the credit reservation below scales with it directly.
+    const isVariantType = VARIANT_CONTENT_TYPES.has(type);
+    const requestedVariants = isVariantType ? Math.max(1, Math.min(MAX_VARIANTS, Number(variantCount) || 1)) : 1;
+    const variantSpecs = isVariantType
+      ? HOOK_ANGLE_ORDER.slice(0, requestedVariants).map((angle, index) => ({
+          id: `v${index + 1}`,
+          angle,
+          angleLabel: HOOK_ANGLES[angle].label,
+        }))
+      : undefined;
 
     const settings = await getSettings(req.user.id);
 
     // Credit gate: reserve before any upload/pipeline work starts, so a request that will
     // be refused never touches disk or spends anything. Mock-mode runs never reach here
     // as anything but free (isFullyMocked short-circuits reserve() to always allow).
-    reservation = await credits.reserve({ userId: req.user.id, isFullyMocked: isFullyMocked() });
+    reservation = await credits.reserve({ userId: req.user.id, isFullyMocked: isFullyMocked(), count: requestedVariants });
     if (!reservation.allowed) {
-      return res.json(402, { error: credits.OUT_OF_CREDITS_MESSAGE, code: 'OUT_OF_CREDITS', creditsRemaining: 0 });
+      const detail = reservation.needed > 1
+        ? ` Bu istek ${reservation.needed} kredi gerektiriyor, ${reservation.remaining} krediniz kaldı.`
+        : '';
+      return res.json(402, {
+        error: `${credits.OUT_OF_CREDITS_MESSAGE}${detail}`,
+        code: 'OUT_OF_CREDITS',
+        creditsRemaining: reservation.remaining,
+        creditsNeeded: reservation.needed,
+      });
     }
 
     // Free credits only ever run the cheapest engine tier - downgraded, not rejected, so a
@@ -166,7 +191,7 @@ app.post('/api/jobs', async (req, res) => {
       (job) => job.imageKey === imageKey && (job.status === 'running' || job.status === 'queued'),
     );
     if (running) {
-      if (reservation.usedFreeCredit) await credits.refund(req.user.id, 'duplicate request');
+      if (reservation.usedFreeCredit) await credits.refund(req.user.id, 'duplicate request', reservation.count);
       return res.json(409, { error: 'Bu içerik için bir akış zaten çalışıyor' });
     }
 
@@ -175,6 +200,7 @@ app.post('/api/jobs', async (req, res) => {
       imageKey,
       contentType: type,
       usedFreeCredit: reservation.usedFreeCredit,
+      variants: variantSpecs,
       input: {
         idea: String(idea).slice(0, 2000),
         model: effectiveModel,
@@ -182,23 +208,31 @@ app.post('/api/jobs', async (req, res) => {
       },
     });
     if (downgraded) log(job, `Ücretsiz kredi: "${requestedModel}" yerine "${effectiveModel}" kullanılıyor`, 'warn');
+    if (requestedVariants > 1) log(job, `${requestedVariants} hook varyantı üretilecek: ${variantSpecs.map((v) => v.angleLabel).join(', ')}`);
 
-    // Fire and forget: progress reaches the browser over SSE. A failed run refunds its
-    // credit - free trials shouldn't be spent on our bugs or a transient provider error.
+    // Fire and forget: progress reaches the browser over SSE. Any variant that didn't finish
+    // (or the whole job, for content types without variants) refunds its own credit - free
+    // trials shouldn't be spent on our bugs, a transient provider error, or a variant that
+    // failed while its siblings succeeded.
     runPipeline(job, { ...upload, imageKey })
       .catch((error) => {
         console.error('Pipeline crashed:', error);
         setStatus(job, 'failed', error.message);
       })
       .then(() => {
-        if (reservation.usedFreeCredit && job.status === 'failed') return credits.refund(req.user.id, 'pipeline failed');
+        if (!reservation.usedFreeCredit) return undefined;
+        const unearned = job.variants.length > 0
+          ? job.variants.filter((variant) => variant.status !== 'done').length
+          : (job.status === 'failed' ? reservation.count : 0);
+        if (unearned > 0) return credits.refund(req.user.id, 'pipeline failed', unearned);
+        return undefined;
       })
       .catch((error) => console.error('Credit refund failed:', error));
     res.json(202, job);
   } catch (error) {
     // Reached only when something threw after a credit was already reserved but before a
     // job took ownership of it (e.g. a bad upload) - give it back rather than lose it.
-    if (reservation.usedFreeCredit) await credits.refund(req.user.id, 'request failed before job started').catch(() => {});
+    if (reservation.usedFreeCredit) await credits.refund(req.user.id, 'request failed before job started', reservation.count).catch(() => {});
     fail(res, error);
   }
 });

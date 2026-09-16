@@ -77,6 +77,7 @@ export const upsertProject = async (userId, imageKey, values) => {
       caption: '',
       finalPrompt: '',
       videoUrl: '',
+      variants: [], // video/ugc only, when >1 hook variant was requested: [{ id, angle, angleLabel, status, title, caption, videoUrl, finalPrompt }]
       slides: [], // carousel only: [{ index, imageUrl, headline, body }]
       modelUrl: '', // character3d only: downloadable .glb mesh
       previewImageUrl: '', // character3d only: rendered turntable preview

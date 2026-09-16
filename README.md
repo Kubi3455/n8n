@@ -27,6 +27,24 @@ platforms — every project hands you back a finished asset and a ready-to-copy 
 4. **Video render** — kie.ai (VEO3) renders the clip from the structured prompt and the image.
 5. **Paylaşım metni** — GPT writes a ready-to-copy caption, under 200 characters.
 
+### Hook/Varyant Testi
+
+Normal Video and UGC Reklam can generate **3-5 variants of the same idea** in one run, each opening
+with a different "hook" angle — the reference image and image-generation step are shared and only run
+once, but steps 3-5 above (script, render, caption) run independently per variant:
+
+- Pick a variant count (1 = off) from the "Hook varyantları" selector next to the model/aspect ratio
+  fields. The five angles — `stat` (şaşırtıcı istatistik), `question` (soru sorma), `objection`
+  (doğrudan itiraz), `story` (hikaye anlatımı), `bold_claim` (cesur iddia) — are defined in
+  `server/prompts.js` (`HOOK_ANGLES`/`HOOK_ANGLE_ORDER`) and picked in that order.
+- Each variant gets its own script agent call, its own VEO3 render, and its own caption, so an
+  N-variant job renders N distinct video files, shown side by side with independent progress and a
+  separate download link each.
+- **This costs N free credits, reserved atomically** — a 3-variant request needs all 3 credits or
+  none of the job runs (no silently-degraded 2-variant fallback). The UI shows the credit cost next
+  to the selector when it applies. A variant that fails refunds only its own credit; siblings that
+  finished keep theirs spent.
+
 ## Pipeline (Instagram Carousel)
 
 1. **Konu toplama** — the member describes the topic and optionally uploads a reference image.
@@ -63,9 +81,10 @@ Prices and free-credit amounts aren't final, so this whole feature lives in one 
 - **Mock mode is always unlimited**, regardless of balance — trying the product costs nothing
   as long as no real provider key is configured (or `MOCK_MODE=1` is set).
 - **A new signup gets `FREE_CREDITS_ON_SIGNUP` (default 2)** credits for runs against real,
-  paid providers. One credit is reserved atomically before a real job starts (so concurrent
-  requests can't overspend the balance) and refunded automatically if that job fails - a free
-  trial shouldn't be spent on our bugs or a transient provider error.
+  paid providers. One credit (or N, for an N-variant Hook/Varyant Testi job — see above) is
+  reserved atomically before a real job starts (so concurrent requests can't overspend the
+  balance) and refunded automatically for anything that didn't finish - a free trial shouldn't
+  be spent on our bugs or a transient provider error.
 - **Free credits only ever run the cheapest engine tier.** `ENGINE_TIERS` in `credits.js` maps
   each engine to a cheap/premium split (today only VEO3's `veo3_fast`/`veo3` model picker is
   wired to an actual UI control; NanoBanana/Tripo3D quality tiers are pre-configured there for
@@ -119,7 +138,7 @@ dialog behind it) shows which providers are live and which are mocked. Add keys 
 | `GET` | `/api/auth/me` | Current session |
 | `GET` | `/api/status` | User, provider status, settings |
 | `GET`/`PUT` | `/api/settings` | Default model/aspect ratio for the video modes |
-| `POST` | `/api/jobs` | Start a run (`contentType`, `image` data URL or none, `idea`, `model`, `aspectRatio`) |
+| `POST` | `/api/jobs` | Start a run (`contentType`, `image` data URL or none, `idea`, `model`, `aspectRatio`, `variantCount` for Normal Video/UGC hook variants) |
 | `GET` | `/api/jobs`, `/api/jobs/:id` | Job state (steps, logs, results) |
 | `GET` | `/api/events` | SSE stream of this member's job updates |
 | `GET` | `/api/projects` | The member's projects |

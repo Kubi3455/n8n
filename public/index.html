@@ -117,6 +117,17 @@
         </label>
       </div>
 
+      <label class="field" id="variant-field">
+        <span>Hook varyantları</span>
+        <select id="variant-count">
+          <option value="1">Kapalı (tek video)</option>
+          <option value="3">3 varyant</option>
+          <option value="4">4 varyant</option>
+          <option value="5">5 varyant</option>
+        </select>
+        <span id="variant-cost-note" class="variant-cost-note" hidden></span>
+      </label>
+
       <button id="start" class="primary" type="button" disabled>İçerik oluştur</button>
       <p id="compose-error" class="error" hidden></p>
     </section>
@@ -140,22 +151,9 @@
             </div>
             <p id="out-image-empty" class="muted">Henüz üretilmedi</p>
           </figure>
-          <figure class="output-card">
-            <figcaption>Video</figcaption>
-            <div class="watermark-frame">
-              <video id="out-video" controls playsinline hidden></video>
-              <span class="watermark-badge" data-watermark hidden>ÜCRETSİZ DENEME</span>
-            </div>
-            <p id="out-video-empty" class="muted">Henüz render edilmedi</p>
-          </figure>
         </div>
 
         <div class="output-text">
-          <details open>
-            <summary>Başlık &amp; paylaşım metni</summary>
-            <p id="out-title" class="mono"></p>
-            <p id="out-caption"></p>
-          </details>
           <details>
             <summary>Görsel analizi</summary>
             <pre id="out-description"></pre>
@@ -164,11 +162,9 @@
             <summary>Görsel prompt'u</summary>
             <pre id="out-image-prompt"></pre>
           </details>
-          <details>
-            <summary>Video prompt'u</summary>
-            <pre id="out-final-prompt"></pre>
-          </details>
         </div>
+
+        <div id="variant-grid" class="variant-grid"></div>
       </div>
 
       <!-- Carousel çıktıları -->

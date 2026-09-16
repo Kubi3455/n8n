@@ -5,6 +5,7 @@ import {
   CAROUSEL_PLAN_SYSTEM,
   CHARACTER_PROMPT_SYSTEM,
   GENERAL_IMAGE_PROMPT_SYSTEM,
+  HOOK_ANGLES,
   MASTER_PROMPT_SCHEMA,
   UGC_IMAGE_PROMPT_SYSTEM,
   VISION_PROMPT,
@@ -171,12 +172,22 @@ const MOCK_VIDEO_SCRIPT = {
   },
 };
 
-/** "AI Agent: Generate Video Script" - style depends on content type ('ugc' | 'general'). */
-export const generateVideoScript = async ({ caption, imageDescription, model, style = 'ugc' }) => {
+/**
+ * "AI Agent: Generate Video Script" - style depends on content type ('ugc' | 'general').
+ * `angle` (see HOOK_ANGLES in prompts.js) steers the opening beat for hook/variant testing;
+ * omitted, the agent picks its own opening as before.
+ */
+export const generateVideoScript = async ({ caption, imageDescription, model, style = 'ugc', angle }) => {
   if (useMock('openai')) {
     await sleep(700);
     const mock = MOCK_VIDEO_SCRIPT[style] || MOCK_VIDEO_SCRIPT.general;
-    return { title: mock.title, final_prompt: JSON.stringify(mock.schema) };
+    const angleLabel = angle && HOOK_ANGLES[angle]?.label;
+    return {
+      title: angleLabel ? `${mock.title} (${angleLabel})` : mock.title,
+      final_prompt: JSON.stringify(
+        angleLabel ? { ...mock.schema, description: `[${angleLabel}] ${mock.schema.description}` } : mock.schema,
+      ),
+    };
   }
 
   const isUgc = style === 'ugc';
@@ -185,7 +196,7 @@ export const generateVideoScript = async ({ caption, imageDescription, model, st
     jsonMode: true,
     messages: [
       { role: 'system', content: videoScriptSystem(MASTER_PROMPT_SCHEMA) },
-      { role: 'user', content: (isUgc ? ugcVideoScriptUser : generalVideoScriptUser)({ caption, imageDescription, model }) },
+      { role: 'user', content: (isUgc ? ugcVideoScriptUser : generalVideoScriptUser)({ caption, imageDescription, model, angle }) },
     ],
   });
 
@@ -261,17 +272,19 @@ export const generateCharacterPrompt = async ({ idea, imageDescription }) => {
 };
 
 /** Final step for every content type: a ready-to-copy caption, always under 200 characters. */
-export const writeSocialCaption = async ({ idea, title, contentType }) => {
+export const writeSocialCaption = async ({ idea, title, contentType, angle }) => {
   if (useMock('openai')) {
     await sleep(400);
-    return contentType === 'carousel'
+    const angleLabel = angle && HOOK_ANGLES[angle]?.label;
+    const base = contentType === 'carousel'
       ? `${title} — kaydır, ipuçlarını kaçırma. Faydalı bulduysan kaydet.`
       : `${title} — tek çekimde, olduğu gibi.`;
+    return angleLabel ? `[${angleLabel}] ${base}` : base;
   }
 
   const raw = await chat({
     model: config.openai.captionModel,
-    messages: [{ role: 'user', content: socialCaptionUser({ idea, title, contentType }) }],
+    messages: [{ role: 'user', content: socialCaptionUser({ idea, title, contentType, angle }) }],
   });
 
   const caption = raw.replace(/^["']|["']$/g, '').trim();

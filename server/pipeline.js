@@ -1,4 +1,4 @@
-import { log, setResult, setStatus, setStep } from './jobs.js';
+import { log, setResult, setStatus, setStep, setVariantResult, setVariantStatus, setVariantStep } from './jobs.js';
 import * as fal from './services/fal.js';
 import * as kie from './services/kie.js';
 import { hostFile } from './services/media.js';
@@ -67,36 +67,69 @@ const runVideoPipeline = async (job, { filePath, publicUrl }, style) => {
     setResult(job, { editedImageUrl });
     setStep(job, 'image', 'done', edited.mocked ? 'Mock düzenleme (referans görsel kullanıldı)' : 'Görsel hazır');
 
-    setStep(job, 'script', 'running', 'Yapılandırılmış video prompt\'u yazılıyor');
-    const script = await openai.generateVideoScript({ caption: idea, imageDescription, model, style });
-    // "Format Prompt" node: the structured prompt travels to VEO3 as an escaped JSON string.
-    const formattedPrompt = JSON.stringify(script.final_prompt);
-    await upsertProject(userId, imageKey, { title: script.title, finalPrompt: script.final_prompt });
-    setResult(job, { title: script.title, finalPrompt: script.final_prompt });
-    log(job, `Senaryo başlığı: ${script.title}`);
-    setStep(job, 'script', 'done', script.title);
+    // Hook/Varyant Testi: everything above this line runs once and is shared; each variant
+    // below only differs in its hook angle, so only script/video/caption fork per variant.
+    await Promise.all(job.variants.map(async (variant) => {
+      const label = variant.angleLabel || variant.id;
+      try {
+        setVariantStatus(job, variant.id, 'running');
 
-    setStep(job, 'video', 'running', `${model} ile render ediliyor (${aspectRatio})`);
-    const video = await kie.generateVideo({
-      prompt: formattedPrompt,
-      model,
-      aspectRatio,
-      imageUrl: editedImageUrl,
-      onProgress: (message) => log(job, message),
+        setVariantStep(job, variant.id, 'script', 'running', 'Yapılandırılmış video prompt\'u yazılıyor');
+        const script = await openai.generateVideoScript({ caption: idea, imageDescription, model, style, angle: variant.angle });
+        // "Format Prompt" node: the structured prompt travels to VEO3 as an escaped JSON string.
+        const formattedPrompt = JSON.stringify(script.final_prompt);
+        setVariantResult(job, variant.id, { title: script.title, finalPrompt: script.final_prompt });
+        log(job, `[${label}] Senaryo başlığı: ${script.title}`);
+        setVariantStep(job, variant.id, 'script', 'done', script.title);
+
+        setVariantStep(job, variant.id, 'video', 'running', `${model} ile render ediliyor (${aspectRatio})`);
+        const video = await kie.generateVideo({
+          prompt: formattedPrompt,
+          model,
+          aspectRatio,
+          imageUrl: editedImageUrl,
+          onProgress: (message) => log(job, `[${label}] ${message}`),
+        });
+        setVariantResult(job, variant.id, { videoUrl: video.url });
+        setVariantStep(job, variant.id, 'video', 'done', video.mocked ? 'Mock render (örnek klip)' : 'Video hazır');
+
+        setVariantStep(job, variant.id, 'caption', 'running');
+        const caption = await openai.writeSocialCaption({ idea, title: script.title, contentType: job.contentType, angle: variant.angle });
+        setVariantResult(job, variant.id, { caption });
+        log(job, `[${label}] Paylaşım metni hazır (${caption.length} karakter)`);
+        setVariantStep(job, variant.id, 'caption', 'done');
+
+        setVariantStatus(job, variant.id, 'done');
+      } catch (error) {
+        const failingStep = variant.steps.find((step) => step.status === 'running');
+        if (failingStep) setVariantStep(job, variant.id, failingStep.id, 'failed', error.message);
+        setVariantStatus(job, variant.id, 'failed', error.message);
+        log(job, `[${label}] ${error.message}`, 'error');
+      }
+    }));
+
+    // The project record keeps every variant plus - for backward-compatible thumbnails/table
+    // rows that expect one title/caption/video - the first one that actually succeeded.
+    const succeeded = job.variants.filter((variant) => variant.status === 'done');
+    const primary = succeeded[0]?.result || {};
+    await upsertProject(userId, imageKey, {
+      variants: job.variants.map((variant) => ({
+        id: variant.id, angle: variant.angle, angleLabel: variant.angleLabel, status: variant.status, ...variant.result,
+      })),
+      title: primary.title || '',
+      caption: primary.caption || '',
+      videoUrl: primary.videoUrl || '',
+      finalPrompt: primary.finalPrompt || '',
+      status: succeeded.length > 0 ? PROJECT_STATUS.ready : PROJECT_STATUS.error,
     });
-    await upsertProject(userId, imageKey, { videoUrl: video.url, status: PROJECT_STATUS.ready });
-    setResult(job, { videoUrl: video.url });
-    setStep(job, 'video', 'done', video.mocked ? 'Mock render (örnek klip)' : 'Video hazır');
 
-    setStep(job, 'caption', 'running');
-    const caption = await openai.writeSocialCaption({ idea, title: script.title, contentType: job.contentType });
-    await upsertProject(userId, imageKey, { caption, status: PROJECT_STATUS.ready });
-    setResult(job, { caption });
-    log(job, `Paylaşım metni hazır (${caption.length} karakter)`);
-    setStep(job, 'caption', 'done');
-
-    setStatus(job, 'completed');
-    log(job, 'Akış tamamlandı');
+    if (succeeded.length === 0) {
+      setStatus(job, 'failed', 'Tüm varyantlar başarısız oldu');
+      log(job, 'Tüm varyantlar başarısız oldu', 'error');
+    } else {
+      setStatus(job, 'completed');
+      log(job, job.variants.length > 1 ? `Akış tamamlandı (${succeeded.length}/${job.variants.length} varyant başarılı)` : 'Akış tamamlandı');
+    }
   } catch (error) {
     const failing = job.steps.find((step) => step.status === 'running');
     if (failing) setStep(job, failing.id, 'failed', error.message);
