@@ -238,6 +238,9 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--tex
 .rating-picker button.selected { background: var(--accent); border-color: var(--accent); color: #23180a; font-weight: 700; }
 .feedback-stars { color: var(--accent); letter-spacing: 1px; }
 
+/* ---------- api / webhook ---------- */
+#api-key-reveal { font-family: monospace; font-size: 12px; margin-top: 6px; }
+
 .character3d-card {
   display: grid; gap: 12px;
   padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2);

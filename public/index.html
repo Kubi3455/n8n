@@ -265,6 +265,26 @@
       </div>
       <hr />
 
+      <h3>API / Webhook Erişimi</h3>
+      <p class="muted">Dış sistemlerden (n8n, Zapier vb.) POST /api/jobs'u tetiklemek için bir API anahtarı üret; <code>Authorization: Bearer &lt;anahtar&gt;</code> ya da <code>X-Api-Key</code> başlığıyla kullanılır. Bir job tamamlandığında aşağıdaki webhook URL'sine sonucu POST eder.</p>
+
+      <label class="field">
+        <span>Webhook URL (isteğe bağlı)</span>
+        <input id="set-webhook" type="text" placeholder="https://..." />
+      </label>
+
+      <div class="field">
+        <span>API anahtarı</span>
+        <div id="api-key-status" class="muted">Yükleniyor…</div>
+        <input id="api-key-reveal" type="text" readonly hidden />
+        <div class="settings-actions">
+          <button id="revoke-api-key" class="ghost" type="button" hidden>İptal et</button>
+          <button id="generate-api-key" class="ghost" type="button">Anahtar oluştur / yenile</button>
+        </div>
+      </div>
+
+      <hr />
+
       <h3>Marka Kiti</h3>
       <p class="muted">İsteğe bağlı: yeni video/carousel/3D üretimlerinde otomatik uygulanabilecek kalıcı bir marka kimliği. Üretim ekranındaki "Marka kitimi kullan" kutusunu işaretlediğinde devreye girer.</p>
 

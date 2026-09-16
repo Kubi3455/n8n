@@ -25,6 +25,7 @@ export const OPTIONAL_IMAGE_TYPES = new Set(['carousel', 'character3d']);
 export const DEFAULT_SETTINGS = {
   model: 'veo3_fast',
   aspectRatio: '16:9',
+  webhookUrl: '', // API/Webhook Access: POSTed the finished job when a run started via API key completes
 };
 
 /**

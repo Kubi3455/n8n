@@ -2,11 +2,24 @@ import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { attachUser, clearSessionCookie, createSession, destroySession, login, register, requireAuth, setSessionCookie } from './auth.js';
+import {
+  attachUser,
+  clearSessionCookie,
+  createSession,
+  destroySession,
+  generateApiKey,
+  getApiKeyStatus,
+  login,
+  register,
+  requireAuth,
+  revokeApiKey,
+  setSessionCookie,
+} from './auth.js';
 import { config, isFullyMocked, paths, providerStatus, setPublicUrl } from './config.js';
 import * as credits from './credits.js'; // self-contained; see server/credits.js to remove
 import { createServer, listenOnFreePort } from './http-server.js';
 import { bus, createJob, getJob, listJobs, log, restoreJobs, setStatus } from './jobs.js';
+import { requestJson } from './services/http.js';
 import { runPipeline } from './pipeline.js';
 import { HOOK_ANGLES, HOOK_ANGLE_ORDER } from './prompts.js';
 import {
@@ -70,6 +83,35 @@ const keyFromIdea = (idea) => crypto.createHash('sha1').update(`${Date.now()}:${
 
 const fail = (res, error) => res.json(error.status || 400, { error: error.message });
 
+/**
+ * API/Webhook Access: fire-and-forget POST of the finished job to the member's configured
+ * webhook URL, so an external system (n8n, Zapier, ...) doesn't have to poll GET /api/jobs/:id.
+ * Fires for both `completed` and `failed` so a broken run is visible too, not just silence.
+ * Never throws - a bad/unreachable webhook must never affect the job itself.
+ */
+const firePostCompletionWebhook = async (job, webhookUrl) => {
+  if (!webhookUrl) return;
+  try {
+    await requestJson(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobId: job.id,
+        imageKey: job.imageKey,
+        contentType: job.contentType,
+        status: job.status,
+        error: job.error,
+        result: job.result,
+        variants: job.variants,
+      }),
+      timeoutMs: 15000,
+    });
+    log(job, 'Webhook bilgilendirmesi gönderildi');
+  } catch (error) {
+    log(job, `Webhook gönderilemedi: ${error.message}`, 'warn');
+  }
+};
+
 // ---------- membership ------------------------------------------------------
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -99,6 +141,29 @@ app.post('/api/auth/logout', async (req, res) => {
 
 app.get('/api/auth/me', (req, res) => res.json(200, { user: req.user }));
 
+// ---------- API/Webhook Access (agency layer) -------------------------------
+app.get('/api/auth/api-key', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  res.json(200, await getApiKeyStatus(req.user.id));
+});
+
+// Generates (or replaces) this member's key; the raw value is returned exactly once here -
+// it is never retrievable again, only its hash is stored.
+app.post('/api/auth/api-key', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  try {
+    res.json(201, { apiKey: await generateApiKey(req.user.id) });
+  } catch (error) {
+    fail(res, error);
+  }
+});
+
+app.delete('/api/auth/api-key', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  await revokeApiKey(req.user.id);
+  res.json(200, { ok: true });
+});
+
 // ---------- app -------------------------------------------------------------
 app.get('/api/status', async (req, res) => {
   const settings = req.user ? await getSettings(req.user.id) : null;
@@ -114,7 +179,12 @@ app.get('/api/settings', async (req, res) => {
 app.put('/api/settings', async (req, res) => {
   if (!requireAuth(req, res)) return;
   try {
-    res.json(200, await saveSettings(req.user.id, req.body));
+    const patch = { ...req.body };
+    if (patch.webhookUrl) {
+      if (!/^https?:\/\//i.test(patch.webhookUrl)) return res.json(400, { error: 'Webhook URL http:// veya https:// ile başlamalı' });
+      patch.webhookUrl = patch.webhookUrl.trim().slice(0, 500);
+    }
+    res.json(200, await saveSettings(req.user.id, patch));
   } catch (error) {
     fail(res, error);
   }
@@ -324,7 +394,8 @@ app.post('/api/jobs', async (req, res) => {
         if (unearned > 0) return credits.refund(req.user.id, 'pipeline failed', unearned);
         return undefined;
       })
-      .catch((error) => console.error('Credit refund failed:', error));
+      .catch((error) => console.error('Credit refund failed:', error))
+      .then(() => firePostCompletionWebhook(job, settings.webhookUrl));
     res.json(202, job);
   } catch (error) {
     // Reached only when something threw after a credit was already reserved but before a

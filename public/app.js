@@ -735,15 +735,55 @@ const wireFeedback = () => {
 const renderSettingsForm = () => {
   $('set-model').value = state.settings.model;
   $('set-aspect').value = state.settings.aspectRatio;
+  $('set-webhook').value = state.settings.webhookUrl || '';
 };
 
 const saveSettings = async () => {
   state.settings = await api('/api/settings', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: $('set-model').value.trim(), aspectRatio: $('set-aspect').value.trim() }),
+    body: JSON.stringify({
+      model: $('set-model').value.trim(),
+      aspectRatio: $('set-aspect').value.trim(),
+      webhookUrl: $('set-webhook').value.trim(),
+    }),
   });
   $('model').value = state.settings.model;
+};
+
+// ---------- API/Webhook Access (agency layer) -----------------------------------
+const renderApiKeyStatus = (status) => {
+  $('api-key-status').textContent = status.active
+    ? `Aktif — ${status.preview} (${new Date(status.createdAt).toLocaleDateString()})`
+    : 'Henüz bir anahtar oluşturulmadı.';
+  $('revoke-api-key').hidden = !status.active;
+};
+
+const loadApiKeyStatus = async () => {
+  renderApiKeyStatus(await api('/api/auth/api-key'));
+};
+
+const wireApiKey = () => {
+  $('generate-api-key').addEventListener('click', async () => {
+    if (!confirm('Yeni bir anahtar oluşturmak eski anahtarı geçersiz kılar. Devam edilsin mi?')) return;
+    try {
+      const { apiKey } = await api('/api/auth/api-key', { method: 'POST' });
+      $('api-key-reveal').hidden = false;
+      $('api-key-reveal').value = apiKey;
+      $('api-key-reveal').select();
+      await loadApiKeyStatus();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+
+  $('revoke-api-key').addEventListener('click', async () => {
+    if (!confirm('API anahtarını iptal etmek istediğine emin misin?')) return;
+    await api('/api/auth/api-key', { method: 'DELETE' });
+    $('api-key-reveal').hidden = true;
+    $('api-key-reveal').value = '';
+    await loadApiKeyStatus();
+  });
 };
 
 // ---------- Marka Kiti (Brand Kit) ----------------------------------------------
@@ -959,10 +999,13 @@ const init = async () => {
   }
   wireBrandKit();
   wireFeedback();
+  wireApiKey();
   const openSettings = () => {
     renderSettingsForm();
     renderBrandKitForm();
     if (state.providers) renderProviderStatus(state.providers);
+    $('api-key-reveal').hidden = true;
+    loadApiKeyStatus().catch((error) => console.error('API key status failed:', error));
     $('settings').showModal();
   };
   $('open-settings').addEventListener('click', openSettings);

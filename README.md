@@ -117,6 +117,23 @@ projects, and nothing else in the app reads a project's feedback. A project must
 `ready` status before a rating can be left on it; the table shows a star rating (hover for the note)
 once one exists, or a "geri bildirim ver" link otherwise.
 
+## API/Webhook Erişimi (agency layer)
+
+An external system (n8n, Zapier, a custom script, ...) can trigger this app the same way the
+browser does, via a per-member API key generated from **Ayarlar → API / Webhook Erişimi**:
+
+- `POST /api/auth/api-key` generates (or replaces) the key; the raw value is shown exactly once,
+  like a GitHub token — only its SHA-256 hash is ever stored (`server/auth.js`). `DELETE
+  /api/auth/api-key` revokes it immediately.
+- Any request can authenticate with either the usual session cookie **or**
+  `Authorization: Bearer <key>` / `X-Api-Key: <key>` — `attachUser` in `server/auth.js` accepts
+  both, so every existing endpoint (`POST /api/jobs`, `GET /api/jobs/:id`, ...) already works for
+  an API-key caller with no route-level changes.
+- An optional **webhook URL** (also in Ayarlar, part of the regular settings PUT) gets POSTed the
+  finished job - `{ jobId, imageKey, contentType, status, error, result, variants }` - once it
+  reaches `completed` or `failed`, so a caller doesn't have to poll `GET /api/jobs/:id`. Sending it
+  never blocks or fails the job itself; a delivery failure is only logged to that job's own log.
+
 ## Free credit system
 
 Prices and free-credit amounts aren't final, so this whole feature lives in one file,
@@ -180,8 +197,9 @@ dialog behind it) shows which providers are live and which are mocked. Add keys 
 | --- | --- | --- |
 | `POST` | `/api/auth/register`, `/api/auth/login`, `/api/auth/logout` | Membership |
 | `GET` | `/api/auth/me` | Current session |
+| `GET`/`POST`/`DELETE` | `/api/auth/api-key` | Check/generate/revoke this member's API key |
 | `GET` | `/api/status` | User, provider status, settings |
-| `GET`/`PUT` | `/api/settings` | Default model/aspect ratio for the video modes |
+| `GET`/`PUT` | `/api/settings` | Default model/aspect ratio/webhook URL for the video modes |
 | `GET`/`PUT`/`DELETE` | `/api/brand-kit` | The member's Marka Kiti (reference images, palette, tone, character) |
 | `POST` | `/api/jobs` | Start a run (`contentType`, `image` data URL or none, `idea`, `model`, `aspectRatio`, `formats` array for Normal Video/UGC multi-format export, `variantCount` for hook variants, `useBrandKit`) |
 | `GET` | `/api/jobs`, `/api/jobs/:id` | Job state (steps, logs, results) |

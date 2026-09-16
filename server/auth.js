@@ -15,6 +15,61 @@ const hashPassword = (password, salt) =>
 
 const publicUser = (user) => ({ id: user.id, email: user.email, name: user.name, createdAt: user.createdAt });
 
+// ============================================================================
+// API/Webhook Access (agency layer): a per-member API key that lets external systems
+// (n8n, Zapier, ...) trigger POST /api/jobs the same way the browser session does - see
+// attachUser below, which accepts either a session cookie or this key. Only a SHA-256 hash
+// of the key is ever stored; the raw value is returned once, at generation time, exactly
+// like a GitHub personal access token.
+// ============================================================================
+
+const API_KEY_PREFIX = 'vvs_';
+const hashApiKey = (key) => crypto.createHash('sha256').update(key).digest('hex');
+
+/** Shown in Ayarlar so a member can tell their key is set without ever re-displaying it. */
+const publicApiKeyInfo = (user) =>
+  user.apiKeyHash ? { active: true, preview: `${API_KEY_PREFIX}${'•'.repeat(8)}${user.apiKeyLast4 || ''}`, createdAt: user.apiKeyCreatedAt } : { active: false };
+
+export const generateApiKey = async (userId) => {
+  const users = await loadUsers();
+  const index = users.findIndex((user) => user.id === userId);
+  if (index === -1) throw Object.assign(new Error('Kullanıcı bulunamadı'), { status: 404 });
+
+  const raw = `${API_KEY_PREFIX}${crypto.randomBytes(24).toString('hex')}`;
+  users[index] = {
+    ...users[index],
+    apiKeyHash: hashApiKey(raw),
+    apiKeyLast4: raw.slice(-4),
+    apiKeyCreatedAt: new Date().toISOString(),
+  };
+  await writeJsonFile(USERS_FILE, users);
+  return raw; // the only time this value is ever returned
+};
+
+export const revokeApiKey = async (userId) => {
+  const users = await loadUsers();
+  const index = users.findIndex((user) => user.id === userId);
+  if (index === -1) throw Object.assign(new Error('Kullanıcı bulunamadı'), { status: 404 });
+
+  const { apiKeyHash, apiKeyLast4, apiKeyCreatedAt, ...rest } = users[index];
+  users[index] = rest;
+  await writeJsonFile(USERS_FILE, users);
+};
+
+export const getApiKeyStatus = async (userId) => {
+  const users = await loadUsers();
+  const user = users.find((candidate) => candidate.id === userId);
+  return user ? publicApiKeyInfo(user) : { active: false };
+};
+
+const userFromApiKey = async (key) => {
+  if (!key || !key.startsWith(API_KEY_PREFIX)) return null;
+  const hash = hashApiKey(key);
+  const users = await loadUsers();
+  const user = users.find((candidate) => candidate.apiKeyHash === hash);
+  return user ? publicUser(user) : null;
+};
+
 const loadUsers = () => readJsonFile(USERS_FILE, []);
 const loadSessions = () => readJsonFile(SESSIONS_FILE, {});
 
@@ -121,11 +176,22 @@ export const clearSessionCookie = (res) => {
   res.setHeader('Set-Cookie', `${authConfig.cookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
 };
 
-/** Attaches req.user when the request carries a valid session cookie. */
+/** Authorization: Bearer <key>, or the header n8n/Zapier-style tools use directly. */
+const extractApiKey = (headers) => {
+  const bearer = /^Bearer\s+(.+)$/i.exec(headers.authorization || '');
+  return bearer?.[1] || headers['x-api-key'] || null;
+};
+
+/**
+ * Attaches req.user for a valid session cookie OR a valid API key - so every existing
+ * route (POST /api/jobs included) works unchanged for an external caller that has no
+ * cookie jar and authenticates with `Authorization: Bearer <key>` / `X-Api-Key` instead.
+ */
 export const attachUser = async (req) => {
   const cookies = parseCookies(req.headers.cookie);
   req.sessionToken = cookies[authConfig.cookieName] || null;
   req.user = await userFromToken(req.sessionToken);
+  if (!req.user) req.user = await userFromApiKey(extractApiKey(req.headers));
 };
 
 /** Returns false (and answers with 401) when the request has no session. */
