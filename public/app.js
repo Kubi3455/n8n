@@ -196,6 +196,10 @@ const updateStartEnabled = () => {
   const hasIdea = $('idea').value.trim().length > 0;
   const hasFormat = !spec.videoOptions || selectedFormats().length > 0;
   $('start').disabled = (spec.imageRequired ? !hasImage : !(hasImage || hasIdea)) || !hasFormat;
+
+  // A silently-disabled button with no format checked looks broken - say why.
+  const formatError = $('format-error');
+  if (formatError) formatError.hidden = hasFormat;
 };
 
 const setImage = (file) => {
@@ -820,6 +824,7 @@ const brandKitHasContent = (kit) =>
 const renderBrandKitField = () => {
   const hasContent = brandKitHasContent(state.brandKit);
   $('brand-kit-field').hidden = !hasContent;
+  $('brand-kit-create-link').hidden = hasContent;
   if (!hasContent) $('use-brand-kit').checked = false;
 };
 
@@ -1039,6 +1044,7 @@ const init = async () => {
   };
   $('open-settings').addEventListener('click', openSettings);
   $('mode-pill').addEventListener('click', openSettings);
+  $('brand-kit-create-link').addEventListener('click', openSettings);
   $('settings').addEventListener('close', () => {
     if ($('settings').returnValue === 'save') {
       Promise.all([saveSettings(), saveBrandKit()]).catch((error) => alert(error.message));
